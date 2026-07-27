@@ -1,0 +1,45 @@
+# Changelog
+
+## 0.1.0 - Unreleased
+
+- Created the native Android project foundation for `com.deaddict.app`.
+- Added Compose theming and Hilt application setup.
+- Added the strongly typed 26-program registry, taxonomy, measurements, interventions, insights, notifications, and safety rules.
+- Added Tier C restriction tests and initial project documentation.
+- Added Room schema v1 for programs, tracking, Rescue, and the sync outbox.
+- Added atomic local-first repositories with explicit local-only/cloud-eligible policies.
+- Added bounded sync retries, idempotency keys, and private-note payload exclusion.
+- Added Supabase email OTP and Google ID-token authentication gateways with private-mode fallback.
+- Added explicit consent before existing guest records become cloud eligible.
+- Added the initial PostgreSQL schema, complete own-row RLS policies, and 12 cross-user pgTAP checks.
+- Deployed the initial schema to the dedicated Deaddict Supabase project and verified hosted cross-user denial.
+- Added first-run selection across all 26 programs.
+- Added the five-tab Compose shell, local Home state, private urge tracking, and safety-tier-aware recovery guidance.
+- Expanded Track to activity, craving, slip, quantity, duration, cost, intensity, and trigger capture.
+- Added Room schema v2 and a migration test preserving existing tracking data.
+- Added optional Android Usage Access and truthful app-level daily usage estimates.
+- Added session and rapid-reopening estimation tests.
+- Replaced the Rescue preview with the complete offline two-minute flow.
+- Added local Rescue outcome persistence, learning inputs, and Tier C safety escalation.
+- Added deterministic Rescue state-machine tests.
+- Added private notification channels, permission-on-opt-in, daily WorkManager scheduling, quiet hours, and rate limiting.
+- Added reboot and timezone rescheduling plus quiet-hour unit tests.
+- Added local explainable seven-day insights for trends, triggers, risk periods, slips, and Rescue effectiveness.
+- Added deterministic insight-analysis tests and non-diagnostic explanation copy.
+- Added biometric/device-credential app lock and screenshot/recent-preview protection.
+- Added analytics and usage-monitoring controls plus confirmed local recovery-data deletion.
+- Added Google Play Billing 9.1.0 with Play-sourced subscription offers, purchase restoration, pending-purchase handling, and automatic service reconnection.
+- Added a server-verification boundary that never grants Plus from an unverified client-side purchase.
+- Added a centralized free/Plus feature policy and tests proving Rescue, safety, deletion, biometrics, and essential privacy cannot be paywalled.
+- Added Android per-app language declarations for English, Hindi, and Telugu.
+- Localized primary navigation and critical safety, privacy, deletion, and billing boundary copy.
+- Added fail-closed regional release configuration with India enabled, the US reference-only, and unknown countries unreleased.
+- Added tests for language, currency, and release-state policy across configured markets.
+- Added accessible names to privacy switches and a Compose test proving locked state does not expose recovery navigation.
+- Added Android 8–9 compatibility for Usage Access permission checks.
+- Disabled cleartext traffic and explicitly excluded all recovery data from cloud backup and device transfer.
+- Cleared Android lint and produced a minified release APK.
+- Added the missing AndroidJUnitRunner packaging dependency for app and database instrumentation.
+- Passed three Room migration/repository tests and the Compose locked-privacy-boundary test on a Pixel 7 API 35 emulator.
+- Separated pure usage-estimation helpers from Android runtime classes, restoring the complete local JVM test gate.
+- Passed all 19 JVM tests and reran Android lint with zero errors.

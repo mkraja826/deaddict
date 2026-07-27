@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">DeAddict</string>
+    <string name="tab_home">Home</string>
+    <string name="tab_track">Track</string>
+    <string name="tab_rescue">Rescue</string>
+    <string name="tab_insights">Insights</string>
+    <string name="tab_profile">Profile</string>
+    <string name="profile_description">Privacy, security, account, and monitoring.</string>
+    <string name="plus_title">DeAddict Plus</string>
+    <string name="plus_active">Plus is active</string>
+    <string name="plus_always_free">Rescue, safety resources, deletion, biometric lock, and essential privacy always remain free.</string>
+    <string name="plus_loading">Loading plans…</string>
+    <string name="plus_unavailable">Plans are unavailable while billing or secure verification is offline.</string>
+    <string name="plus_verification_required">Plus stays locked until Google Play purchase verification succeeds.</string>
+    <string name="restore_purchases">Restore purchases</string>
+    <string name="safety_immediate_danger">If you may be in immediate danger or have severe withdrawal symptoms, contact local emergency services or a qualified medical professional. DeAddict does not provide detox or taper instructions.</string>
+    <string name="delete_local_data">Delete local recovery data</string>
+    <string name="privacy_security">Privacy and security</string>
+</resources>

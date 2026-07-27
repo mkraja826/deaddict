@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.DeAddict" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:colorAccent">#4F46E5</item>
+    </style>
+</resources>
+

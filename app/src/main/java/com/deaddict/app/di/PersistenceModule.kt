@@ -1,0 +1,90 @@
+package com.deaddict.app.di
+
+import android.content.Context
+import androidx.room.Room
+import com.deaddict.database.DeAddictDatabase
+import com.deaddict.database.MIGRATION_1_2
+import com.deaddict.database.repository.LocalProgramRepository
+import com.deaddict.database.repository.LocalTrackingRepository
+import com.deaddict.database.repository.LocalRescueRepository
+import com.deaddict.app.auth.AuthGateway
+import com.deaddict.app.auth.SupabaseAuthGateway
+import com.deaddict.app.auth.createDeAddictSupabaseClient
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+import com.deaddict.programs.DefaultProgramRegistry
+import com.deaddict.programs.ProgramRegistry
+import com.deaddict.app.usage.DigitalUsageRepository
+import com.deaddict.app.notifications.NotificationPreferenceStore
+import com.deaddict.app.notifications.NotificationScheduler
+import com.deaddict.app.insights.LocalInsightsRepository
+import com.deaddict.app.privacy.PrivacyPreferenceStore
+
+@Module
+@InstallIn(SingletonComponent::class)
+object PersistenceModule {
+    @Provides
+    @Singleton
+    fun database(@ApplicationContext context: Context): DeAddictDatabase =
+        Room.databaseBuilder(
+            context,
+            DeAddictDatabase::class.java,
+            "deaddict.db",
+        ).addMigrations(MIGRATION_1_2).build()
+
+    @Provides
+    @Singleton
+    fun authGateway(): AuthGateway =
+        SupabaseAuthGateway(createDeAddictSupabaseClient())
+
+    @Provides
+    @Singleton
+    fun programRegistry(): ProgramRegistry = DefaultProgramRegistry()
+
+    @Provides
+    @Singleton
+    fun programRepository(database: DeAddictDatabase): LocalProgramRepository =
+        LocalProgramRepository(database)
+
+    @Provides
+    @Singleton
+    fun trackingRepository(database: DeAddictDatabase): LocalTrackingRepository =
+        LocalTrackingRepository(database)
+
+    @Provides
+    @Singleton
+    fun digitalUsageRepository(@ApplicationContext context: Context): DigitalUsageRepository =
+        DigitalUsageRepository(context)
+
+    @Provides
+    @Singleton
+    fun rescueRepository(database: DeAddictDatabase): LocalRescueRepository =
+        LocalRescueRepository(database)
+
+    @Provides
+    @Singleton
+    fun notificationPreferenceStore(
+        @ApplicationContext context: Context,
+    ): NotificationPreferenceStore = NotificationPreferenceStore(context)
+
+    @Provides
+    @Singleton
+    fun notificationScheduler(
+        @ApplicationContext context: Context,
+    ): NotificationScheduler = NotificationScheduler(context)
+
+    @Provides
+    @Singleton
+    fun insightsRepository(database: DeAddictDatabase): LocalInsightsRepository =
+        LocalInsightsRepository(database)
+
+    @Provides
+    @Singleton
+    fun privacyPreferenceStore(
+        @ApplicationContext context: Context,
+    ): PrivacyPreferenceStore = PrivacyPreferenceStore(context)
+}

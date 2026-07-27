@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">DeAddict</string>
+    <string name="tab_home">होम</string>
+    <string name="tab_track">ट्रैक</string>
+    <string name="tab_rescue">रेस्क्यू</string>
+    <string name="tab_insights">जानकारियाँ</string>
+    <string name="tab_profile">प्रोफ़ाइल</string>
+    <string name="profile_description">गोपनीयता, सुरक्षा, खाता और निगरानी।</string>
+    <string name="plus_title">DeAddict Plus</string>
+    <string name="plus_active">Plus सक्रिय है</string>
+    <string name="plus_always_free">रेस्क्यू, सुरक्षा संसाधन, डेटा हटाना, बायोमेट्रिक लॉक और आवश्यक गोपनीयता हमेशा मुफ़्त रहेंगे।</string>
+    <string name="plus_loading">प्लान लोड हो रहे हैं…</string>
+    <string name="plus_unavailable">बिलिंग या सुरक्षित सत्यापन ऑफ़लाइन होने के दौरान प्लान उपलब्ध नहीं हैं।</string>
+    <string name="plus_verification_required">Google Play खरीद सत्यापन सफल होने तक Plus लॉक रहेगा।</string>
+    <string name="restore_purchases">खरीदारी बहाल करें</string>
+    <string name="safety_immediate_danger">यदि आपको तत्काल खतरा हो सकता है या गंभीर विड्रॉल लक्षण हैं, तो स्थानीय आपातकालीन सेवाओं या योग्य चिकित्सक से संपर्क करें। DeAddict डिटॉक्स या टेपर निर्देश नहीं देता।</string>
+    <string name="delete_local_data">स्थानीय रिकवरी डेटा हटाएँ</string>
+    <string name="privacy_security">गोपनीयता और सुरक्षा</string>
+</resources>

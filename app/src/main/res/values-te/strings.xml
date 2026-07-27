@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">DeAddict</string>
+    <string name="tab_home">హోమ్</string>
+    <string name="tab_track">ట్రాక్</string>
+    <string name="tab_rescue">రెస్క్యూ</string>
+    <string name="tab_insights">అంతర్దృష్టులు</string>
+    <string name="tab_profile">ప్రొఫైల్</string>
+    <string name="profile_description">గోప్యత, భద్రత, ఖాతా మరియు పర్యవేక్షణ.</string>
+    <string name="plus_title">DeAddict Plus</string>
+    <string name="plus_active">Plus సక్రియంగా ఉంది</string>
+    <string name="plus_always_free">రెస్క్యూ, భద్రతా వనరులు, డేటా తొలగింపు, బయోమెట్రిక్ లాక్ మరియు అవసరమైన గోప్యత ఎల్లప్పుడూ ఉచితం.</string>
+    <string name="plus_loading">ప్లాన్‌లు లోడ్ అవుతున్నాయి…</string>
+    <string name="plus_unavailable">బిల్లింగ్ లేదా సురక్షిత ధృవీకరణ ఆఫ్‌లైన్‌లో ఉన్నప్పుడు ప్లాన్‌లు అందుబాటులో ఉండవు.</string>
+    <string name="plus_verification_required">Google Play కొనుగోలు ధృవీకరణ విజయవంతమయ్యే వరకు Plus లాక్‌లో ఉంటుంది.</string>
+    <string name="restore_purchases">కొనుగోళ్లను పునరుద్ధరించండి</string>
+    <string name="safety_immediate_danger">మీరు తక్షణ ప్రమాదంలో ఉండవచ్చు లేదా తీవ్రమైన ఉపసంహరణ లక్షణాలు ఉంటే, స్థానిక అత్యవసర సేవలను లేదా అర్హత కలిగిన వైద్య నిపుణుడిని సంప్రదించండి. DeAddict డిటాక్స్ లేదా టేపర్ సూచనలు ఇవ్వదు.</string>
+    <string name="delete_local_data">స్థానిక రికవరీ డేటాను తొలగించండి</string>
+    <string name="privacy_security">గోప్యత మరియు భద్రత</string>
+</resources>

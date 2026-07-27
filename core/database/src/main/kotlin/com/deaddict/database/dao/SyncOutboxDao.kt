@@ -1,0 +1,47 @@
+package com.deaddict.database.dao
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import com.deaddict.database.entity.SyncOutboxEntity
+
+@Dao
+interface SyncOutboxDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun enqueue(item: SyncOutboxEntity): Long
+
+    @Query(
+        """
+        SELECT * FROM sync_outbox
+        WHERE state = 'PENDING' AND nextAttemptAtEpochMillis <= :now
+        ORDER BY createdAtEpochMillis
+        LIMIT :limit
+        """,
+    )
+    suspend fun nextBatch(now: Long, limit: Int): List<SyncOutboxEntity>
+
+    @Query(
+        """
+        UPDATE sync_outbox SET state = 'IN_FLIGHT'
+        WHERE id = :id AND state = 'PENDING'
+        """,
+    )
+    suspend fun claim(id: String): Int
+
+    @Query("UPDATE sync_outbox SET state = 'COMPLETED', lastErrorCode = NULL WHERE id = :id")
+    suspend fun complete(id: String): Int
+
+    @Query(
+        """
+        UPDATE sync_outbox SET
+          state = CASE WHEN :deadLetter THEN 'DEAD_LETTER' ELSE 'PENDING' END,
+          attemptCount = attemptCount + 1,
+          nextAttemptAtEpochMillis = :nextAttempt,
+          lastErrorCode = :errorCode
+        WHERE id = :id
+        """,
+    )
+    suspend fun retry(id: String, nextAttempt: Long, errorCode: String, deadLetter: Boolean): Int
+}
+
