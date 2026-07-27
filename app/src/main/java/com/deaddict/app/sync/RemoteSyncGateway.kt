@@ -2,6 +2,7 @@ package com.deaddict.app.sync
 
 import com.deaddict.database.entity.ActiveProgramEntity
 import com.deaddict.database.entity.RescueSessionEntity
+import com.deaddict.database.entity.SyncAggregateType
 import com.deaddict.database.entity.TrackingEventEntity
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
@@ -60,6 +61,8 @@ interface RemoteSyncGateway {
     suspend fun upsertTrackingEvent(userId: String, event: TrackingEventEntity)
 
     suspend fun upsertRescueSession(userId: String, session: RescueSessionEntity)
+
+    suspend fun deleteRecord(userId: String, aggregateType: SyncAggregateType, aggregateId: String)
 
     suspend fun downloadSnapshot(): CloudSnapshot
 }
@@ -125,6 +128,24 @@ class SupabaseRemoteSyncGateway(
                 ).toIsoInstant(),
             ),
         )
+    }
+
+    override suspend fun deleteRecord(
+        userId: String,
+        aggregateType: SyncAggregateType,
+        aggregateId: String,
+    ) {
+        val table = when (aggregateType) {
+            SyncAggregateType.ACTIVE_PROGRAM -> "user_programs"
+            SyncAggregateType.TRACKING_EVENT -> "tracking_events"
+            SyncAggregateType.RESCUE_SESSION -> "rescue_sessions"
+        }
+        requireClient().from(table).delete {
+            filter {
+                eq("id", aggregateId)
+                eq("user_id", userId)
+            }
+        }
     }
 
     override suspend fun downloadSnapshot(): CloudSnapshot {
