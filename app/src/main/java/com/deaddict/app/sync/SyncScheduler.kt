@@ -47,6 +47,11 @@ class SyncScheduler @Inject constructor(
         )
     }
 
+    fun cancelAll() {
+        workManager.cancelUniqueWork(IMMEDIATE_WORK)
+        workManager.cancelUniqueWork(PERIODIC_WORK)
+    }
+
     private companion object {
         const val IMMEDIATE_WORK = "deaddict_cloud_sync_now"
         const val PERIODIC_WORK = "deaddict_cloud_sync_periodic"
