@@ -9,6 +9,7 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.functions.functions
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
@@ -51,7 +52,7 @@ class AccountDeletionCoordinator @Inject constructor(
 
     suspend fun deleteAccount() {
         remote.deleteRemoteAccount()
-        withContext(NonCancellable) {
+        withContext(NonCancellable + Dispatchers.IO) {
             syncScheduler.cancelAll()
             notificationScheduler.cancelDailyCheckIn()
             database.clearAllTables()
