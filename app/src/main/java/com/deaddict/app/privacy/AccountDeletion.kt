@@ -19,6 +19,10 @@ interface AccountDeletionGateway {
     suspend fun deleteRemoteAccount()
 }
 
+data class AccountDeletionResult(
+    val localCleanupComplete: Boolean,
+)
+
 @Singleton
 class SupabaseAccountDeletionGateway @Inject constructor(
     provider: SupabaseClientProvider,
@@ -50,13 +54,18 @@ class AccountDeletionCoordinator @Inject constructor(
     val available: Boolean
         get() = remote.available
 
-    suspend fun deleteAccount() {
+    suspend fun deleteAccount(): AccountDeletionResult {
         remote.deleteRemoteAccount()
-        withContext(NonCancellable + Dispatchers.IO) {
-            syncScheduler.cancelAll()
-            notificationScheduler.cancelDailyCheckIn()
-            database.clearAllTables()
-            privacyPreferences.clear()
+        val cleanupResults = withContext(NonCancellable + Dispatchers.IO) {
+            listOf(
+                runCatching { syncScheduler.cancelAll() },
+                runCatching { notificationScheduler.cancelDailyCheckIn() },
+                runCatching { database.clearAllTables() },
+                runCatching { privacyPreferences.clear() },
+            )
         }
+        return AccountDeletionResult(
+            localCleanupComplete = cleanupResults.all(Result<Unit>::isSuccess),
+        )
     }
 }
