@@ -105,7 +105,7 @@ class MainActivity : FragmentActivity() {
                         onUsageMonitoringChanged = viewModel::setUsageMonitoringEnabled,
                         onDeleteLocalData = viewModel::deleteLocalRecoveryData,
                         onPurchasePlus = { offerToken ->
-                            viewModel.purchasePlus(this, offerToken)
+                            viewModel.purchasePlus(this@MainActivity, offerToken)
                         },
                         onRestorePurchases = viewModel::refreshBilling,
                     )
