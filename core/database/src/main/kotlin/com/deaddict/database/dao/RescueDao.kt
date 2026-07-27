@@ -27,6 +27,12 @@ interface RescueDao {
     @Query("UPDATE rescue_sessions SET syncState = 'SYNCED' WHERE id = :id")
     suspend fun markSynced(id: String): Int
 
+    @Query("DELETE FROM rescue_sessions WHERE id = :id")
+    suspend fun deleteById(id: String): Int
+
+    @Query("DELETE FROM rescue_sessions")
+    suspend fun deleteAll(): Int
+
     @Query("SELECT * FROM rescue_sessions ORDER BY startedAtEpochMillis DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<RescueSessionEntity>>
 
