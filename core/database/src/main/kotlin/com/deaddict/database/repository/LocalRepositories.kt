@@ -98,8 +98,13 @@ class LocalTrackingRepository(
     private val clock: EpochClock = EpochClock(System::currentTimeMillis),
     private val ids: IdGenerator = IdGenerator { UUID.randomUUID().toString() },
 ) {
-    fun observeForProgram(programId: ProgramId): Flow<List<TrackingEventEntity>> =
-        database.trackingDao().observeForProgram(programId.value)
+    fun observeForProgram(
+        programId: ProgramId,
+        limit: Int = DEFAULT_TRACKING_OBSERVATION_LIMIT,
+    ): Flow<List<TrackingEventEntity>> {
+        require(limit in 1..MAX_TRACKING_OBSERVATION_LIMIT)
+        return database.trackingDao().observeForProgram(programId.value, limit)
+    }
 
     suspend fun record(input: NewTrackingEvent, syncPolicy: SyncPolicy): String {
         val id = ids.next()
@@ -145,6 +150,11 @@ class LocalTrackingRepository(
         }
         check(database.trackingDao().deleteById(id) == 1)
         true
+    }
+
+    private companion object {
+        const val DEFAULT_TRACKING_OBSERVATION_LIMIT = 500
+        const val MAX_TRACKING_OBSERVATION_LIMIT = 2_000
     }
 }
 
