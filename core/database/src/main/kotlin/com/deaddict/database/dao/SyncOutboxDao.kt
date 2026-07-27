@@ -47,6 +47,14 @@ interface SyncOutboxDao {
     )
     suspend fun supersedePendingUpsert(aggregateType: String, aggregateId: String): Int
 
+    @Query(
+        """
+        SELECT aggregateId FROM sync_outbox
+        WHERE aggregateType = :aggregateType AND operation = 'DELETE'
+        """,
+    )
+    suspend fun deleteTombstoneIds(aggregateType: String): List<String>
+
     @Query("DELETE FROM sync_outbox")
     suspend fun deleteAll(): Int
 
