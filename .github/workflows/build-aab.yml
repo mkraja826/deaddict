@@ -36,11 +36,19 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
+      - name: Verify Java toolchain
+        run: |
+          java -version
+          ./gradlew --version
+
+      - name: Clean stale build outputs
+        run: ./gradlew clean --no-build-cache --stacktrace
+
       - name: Run JVM unit tests
-        run: ./gradlew test --stacktrace
+        run: ./gradlew test --no-build-cache --stacktrace
 
       - name: Run Android lint
-        run: ./gradlew lint --stacktrace
+        run: ./gradlew lint --no-build-cache --stacktrace
 
       - name: Build release AAB
         env:
@@ -52,6 +60,7 @@ jobs:
             -PDEADDICT_SUPABASE_URL="$DEADDICT_SUPABASE_URL" \
             -PDEADDICT_SUPABASE_PUBLISHABLE_KEY="$DEADDICT_SUPABASE_PUBLISHABLE_KEY" \
             -PDEADDICT_GOOGLE_SERVER_CLIENT_ID="$DEADDICT_GOOGLE_SERVER_CLIENT_ID" \
+            --no-build-cache \
             --stacktrace
 
       - name: Upload release AAB
