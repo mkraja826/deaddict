@@ -1,6 +1,7 @@
 package com.deaddict.app.privacy
 
 import com.deaddict.app.auth.SupabaseClientProvider
+import com.deaddict.app.notifications.NotificationPreferenceStore
 import com.deaddict.app.notifications.NotificationScheduler
 import com.deaddict.app.sync.SyncScheduler
 import com.deaddict.database.DeAddictDatabase
@@ -48,6 +49,7 @@ class AccountDeletionCoordinator @Inject constructor(
     private val remote: SupabaseAccountDeletionGateway,
     private val database: DeAddictDatabase,
     private val privacyPreferences: PrivacyPreferenceStore,
+    private val notificationPreferences: NotificationPreferenceStore,
     private val notificationScheduler: NotificationScheduler,
     private val syncScheduler: SyncScheduler,
 ) {
@@ -62,6 +64,7 @@ class AccountDeletionCoordinator @Inject constructor(
                 runCatching { notificationScheduler.cancelDailyCheckIn() },
                 runCatching { database.clearAllTables() },
                 runCatching { privacyPreferences.clear() },
+                runCatching { notificationPreferences.clear() },
             )
         }
         return AccountDeletionResult(
