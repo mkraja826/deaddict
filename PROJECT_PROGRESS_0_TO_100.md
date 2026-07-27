@@ -2,13 +2,13 @@
 
 Last updated: 2026-07-27
 
-Overall progress: **83%**
+Overall progress: **84%**
 
 | Phase | Scope | Status | Weight | Earned |
 |---|---|---:|---:|---:|
 | 0 | Audit, foundation, architecture, documentation | Complete | 7% | 7% |
 | 1 | Program framework, taxonomy, safety tiers | Complete | 5% | 5% |
-| 2 | Room, local repositories, offline operation, sync queue | Partial | 10% | 8% |
+| 2 | Room, local repositories, offline operation, sync queue | Partial | 10% | 9% |
 | 3 | Authentication, Supabase, RLS, guest migration | Partial | 9% | 8% |
 | 4 | Onboarding, Home, Track, recovery plans | Partial | 11% | 10% |
 | 5 | Digital usage monitoring | Partial | 7% | 5% |
@@ -27,10 +27,13 @@ Overall progress: **83%**
 - Compile/target SDK: API 36
 - Local-first and guest-first are architectural invariants.
 - Safety and essential privacy features cannot be paywalled.
-- Room schema v1, atomic local repositories, and the durable sync outbox are implemented.
-- Room migration and repository instrumentation now pass on a Pixel 7 API 35 emulator; Phase 2 remains partial until hosted sync processing and broader conflict/offline device coverage are complete.
+- Room schema v2, atomic local repositories, and the durable sync outbox are implemented.
+- Authenticated Supabase upload now processes programs, tracking events, and Rescue sessions through a network-constrained WorkManager pipeline with atomic claims, bounded retries, dead-lettering, interrupted-claim recovery, and private-note exclusion.
+- Cloud restore now downloads the three user-owned datasets after upload processing and applies them transactionally without overwriting `LOCAL_ONLY` or `PENDING` rows; existing local private notes are preserved.
+- GitHub Actions now gates JVM tests, Android lint, debug/release builds, reports, and APK artifacts. The connected upload-and-restore sync build is green.
+- Phase 2 remains partial until delete/tombstone processing, broader timestamp conflict reconciliation, account-switch coverage, and real-device offline/reconnect verification are complete.
 - Phase 3 Android Auth, explicit guest migration consent, local migrations, and RLS tests are implemented.
-- The dedicated `Deaddict` Supabase project has the initial schema and RLS migration deployed.
+- The dedicated `Deaddict` Supabase project has the initial schema, least-privilege grants, own-row RLS, and tracking-trigger migration deployed with no security-advisor findings.
 - Phase 3 remains partial until Google OAuth credentials and end-to-end provider sign-in are verified.
 - Phase 4 now includes first-run program selection, the five-tab shell, local Home state, urge tracking, and safety-aware recovery guidance.
 - Track now supports activity, urge, craving, slip, quantity, duration, cost, intensity, and trigger logging.
@@ -51,5 +54,5 @@ Overall progress: **83%**
 - Phase 11 includes Android per-app language declarations, English/Hindi/Telugu resources for primary navigation and critical billing/privacy/safety copy, RTL support, and fail-closed regional release configuration.
 - India is the only enabled initial market; the United States remains reference-only and all unknown countries remain unreleased.
 - Phase 11 remains partial until the complete UI catalog, professional translation review, localized legal documents/store listings, regional safety-resource validation, and RTL device QA are complete.
-- Phase 12 includes 19 passing JVM tests, a clean Android lint gate, passing Pixel 7 Compose privacy-boundary instrumentation, passing Room migration/repository instrumentation, named privacy switches for assistive technology, API 26-safe Usage Access checks, explicit backup/device-transfer exclusion, blocked cleartext traffic, and a minified release build.
-- Phase 12 remains partial until device/emulator execution, manual TalkBack/large-text/reduced-motion QA, dependency and clinical review, signed AAB creation, Play closed testing, and crash/ANR review are complete.
+- Phase 12 includes passing JVM and connected-sync tests, a clean Android lint gate, passing Pixel 7 Compose privacy-boundary instrumentation, passing Room migration/repository instrumentation, named privacy switches for assistive technology, API 26-safe Usage Access checks, explicit backup/device-transfer exclusion, blocked cleartext traffic, and a minified release build.
+- Phase 12 remains partial until the wider device/emulator matrix, manual TalkBack/large-text/reduced-motion QA, dependency and clinical review, signed AAB creation, Play closed testing, and crash/ANR review are complete.
