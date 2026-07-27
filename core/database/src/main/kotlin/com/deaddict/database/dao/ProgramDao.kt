@@ -33,6 +33,12 @@ interface ProgramDao {
     @Query("UPDATE active_programs SET syncState = 'SYNCED' WHERE id = :id")
     suspend fun markSynced(id: String): Int
 
+    @Query("DELETE FROM active_programs WHERE id = :id")
+    suspend fun deleteById(id: String): Int
+
+    @Query("DELETE FROM active_programs")
+    suspend fun deleteAll(): Int
+
     @Query(
         """
         UPDATE active_programs
