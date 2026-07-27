@@ -33,6 +33,26 @@ class SyncProcessorTest {
     }
 
     @Test
+    fun `successful delete does not require a local row`() = runBlocking {
+        val item = trackingDeleteItem()
+        val store = FakeSyncStore(
+            items = mutableListOf(item),
+            tracking = null,
+        )
+        val remote = FakeRemoteSyncGateway()
+
+        val result = SyncProcessor(store, remote).runBatch()
+
+        assertEquals(SyncRunResult.SUCCESS, result)
+        assertEquals(
+            listOf(SyncAggregateType.TRACKING_EVENT to "event-1"),
+            remote.deletedRecords,
+        )
+        assertEquals(listOf("outbox-delete-1"), store.completedIds)
+        assertTrue(store.failures.isEmpty())
+    }
+
+    @Test
     fun `signed out user leaves pending work untouched`() = runBlocking {
         val store = FakeSyncStore(mutableListOf(trackingItem()), trackingEvent())
         val remote = FakeRemoteSyncGateway(userId = null)
@@ -70,6 +90,21 @@ class SyncProcessorTest {
             store.failures,
         )
         assertFalse(store.completedIds.contains("outbox-1"))
+    }
+
+    @Test
+    fun `remote delete failure requests retry`() = runBlocking {
+        val store = FakeSyncStore(mutableListOf(trackingDeleteItem()), tracking = null)
+        val remote = FakeRemoteSyncGateway(failWrites = true)
+
+        val result = SyncProcessor(store, remote).runBatch()
+
+        assertEquals(SyncRunResult.RETRY, result)
+        assertEquals(
+            listOf(Failure("outbox-delete-1", "REMOTE_WRITE_FAILED", permanent = false)),
+            store.failures,
+        )
+        assertTrue(remote.deletedRecords.isEmpty())
     }
 }
 
@@ -117,6 +152,7 @@ private class FakeRemoteSyncGateway(
 ) : RemoteSyncGateway {
     override val available: Boolean = true
     val uploadedTrackingIds = mutableListOf<String>()
+    val deletedRecords = mutableListOf<Pair<SyncAggregateType, String>>()
 
     override suspend fun currentUserId(): String? = userId
 
@@ -128,6 +164,15 @@ private class FakeRemoteSyncGateway(
     }
 
     override suspend fun upsertRescueSession(userId: String, session: RescueSessionEntity) = Unit
+
+    override suspend fun deleteRecord(
+        userId: String,
+        aggregateType: SyncAggregateType,
+        aggregateId: String,
+    ) {
+        if (failWrites) error("offline")
+        deletedRecords += aggregateType to aggregateId
+    }
 
     override suspend fun downloadSnapshot(): CloudSnapshot =
         CloudSnapshot(emptyList(), emptyList(), emptyList())
@@ -142,6 +187,17 @@ private fun trackingItem() = SyncOutboxEntity(
     payload = "{}",
     createdAtEpochMillis = 1_000L,
     nextAttemptAtEpochMillis = 1_000L,
+)
+
+private fun trackingDeleteItem() = SyncOutboxEntity(
+    id = "outbox-delete-1",
+    idempotencyKey = "TRACKING_EVENT:event-1:DELETE",
+    aggregateType = SyncAggregateType.TRACKING_EVENT,
+    aggregateId = "event-1",
+    operation = SyncOperation.DELETE,
+    payload = "{}",
+    createdAtEpochMillis = 2_000L,
+    nextAttemptAtEpochMillis = 2_000L,
 )
 
 private fun trackingEvent() = TrackingEventEntity(
