@@ -3,7 +3,7 @@ plugins {
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(17)
 }
 
 dependencies {
@@ -14,4 +14,3 @@ dependencies {
 tasks.test {
     useJUnit()
 }
-
