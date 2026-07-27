@@ -35,15 +35,25 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run JVM tests
-        run: ./gradlew test --stacktrace
+        shell: bash
+        run: |
+          mkdir -p build-logs
+          set -o pipefail
+          ./gradlew test --stacktrace 2>&1 | tee build-logs/jvm-tests.log
 
       - name: Run Android lint
-        run: ./gradlew lint --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew lint --stacktrace 2>&1 | tee build-logs/android-lint.log
 
       - name: Build debug and release artifacts
-        run: ./gradlew assembleDebug assembleRelease --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug assembleRelease --stacktrace 2>&1 | tee build-logs/android-build.log
 
-      - name: Upload test and lint reports
+      - name: Upload verification reports and logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -51,6 +61,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
           path: |
+            build-logs/**
             **/build/reports/**
             **/build/test-results/**
 
