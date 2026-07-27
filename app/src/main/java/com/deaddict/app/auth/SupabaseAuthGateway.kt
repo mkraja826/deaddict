@@ -10,6 +10,7 @@ import io.github.jan.supabase.auth.providers.builtin.IDToken
 import io.github.jan.supabase.auth.providers.builtin.OTP
 import io.github.jan.supabase.auth.user.UserInfo
 import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.functions.Functions
 import io.github.jan.supabase.postgrest.Postgrest
 
 class SupabaseAuthGateway(
@@ -77,6 +78,7 @@ fun createDeAddictSupabaseClient(): SupabaseClient? {
     return createSupabaseClient(url, publishableKey) {
         install(Auth)
         install(Postgrest)
+        install(Functions)
     }
 }
 
