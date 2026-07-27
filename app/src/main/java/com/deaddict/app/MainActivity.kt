@@ -159,8 +159,8 @@ class MainActivity : FragmentActivity() {
         )
         prompt.authenticate(
             BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Unlock DeAddict")
-                .setSubtitle("Confirm it’s you")
+                .setTitle(getString(R.string.biometric_unlock_title))
+                .setSubtitle(getString(R.string.biometric_unlock_subtitle))
                 .setAllowedAuthenticators(authenticators)
                 .build(),
         )
