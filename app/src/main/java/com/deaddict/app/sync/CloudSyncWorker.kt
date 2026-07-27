@@ -33,24 +33,31 @@ class CloudSyncWorker(
             when (uploadProcessor.runBatch()) {
                 SyncRunResult.SUCCESS -> batchCount += 1
                 SyncRunResult.RETRY -> return@withLock Result.retry()
-                SyncRunResult.IDLE -> break
+                SyncRunResult.IDLE -> return@withLock restore(database, remote)
                 SyncRunResult.UNAVAILABLE,
                 SyncRunResult.SIGNED_OUT,
                 -> return@withLock Result.success()
             }
         }
 
-        return@withLock try {
-            CloudRestoreProcessor(
-                store = RoomRestoreStore(database),
-                remote = remote,
-            ).restore()
-            Result.success()
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Throwable) {
-            Result.retry()
-        }
+        // Do not restore while unprocessed upserts or deletes may still exist. A later run will
+        // continue draining the durable queue, then restore only after the queue reports IDLE.
+        Result.retry()
+    }
+
+    private suspend fun restore(
+        database: DeAddictDatabase,
+        remote: RemoteSyncGateway,
+    ): Result = try {
+        CloudRestoreProcessor(
+            store = RoomRestoreStore(database),
+            remote = remote,
+        ).restore()
+        Result.success()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Throwable) {
+        Result.retry()
     }
 
     private companion object {
