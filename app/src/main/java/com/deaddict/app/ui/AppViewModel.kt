@@ -374,12 +374,16 @@ class AppViewModel @Inject constructor(
             accountDeletionInProgress.value = true
             runCatching {
                 accountDeletionCoordinator.deleteAccount()
-            }.onSuccess {
+            }.onSuccess { result ->
                 insights.value = null
                 selectedTab.value = AppTab.HOME
-                message.value = "Account and recovery data deleted."
+                message.value = if (result.localCleanupComplete) {
+                    "Account and recovery data deleted."
+                } else {
+                    "Account deleted. Some local cleanup could not finish; clear DeAddict app storage before using it again."
+                }
             }.onFailure {
-                message.value = "Account deletion could not be completed. No local data was removed."
+                message.value = "Account deletion could not be confirmed. Check whether you can still sign in before retrying."
             }
             accountDeletionInProgress.value = false
         }
