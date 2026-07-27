@@ -12,6 +12,9 @@ interface RescueDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(session: RescueSessionEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertFromCloud(session: RescueSessionEntity)
+
     @Query("SELECT * FROM rescue_sessions WHERE id = :id LIMIT 1")
     suspend fun byId(id: String): RescueSessionEntity?
 
