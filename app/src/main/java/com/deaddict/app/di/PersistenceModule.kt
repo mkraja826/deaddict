@@ -2,27 +2,30 @@ package com.deaddict.app.di
 
 import android.content.Context
 import androidx.room.Room
+import com.deaddict.app.auth.AuthGateway
+import com.deaddict.app.auth.SupabaseAuthGateway
+import com.deaddict.app.auth.SupabaseClientProvider
+import com.deaddict.app.insights.LocalInsightsRepository
+import com.deaddict.app.notifications.NotificationPreferenceStore
+import com.deaddict.app.notifications.NotificationScheduler
+import com.deaddict.app.privacy.PrivacyPreferenceStore
+import com.deaddict.app.sync.RemoteSyncGateway
+import com.deaddict.app.sync.SupabaseRemoteSyncGateway
+import com.deaddict.app.sync.SyncScheduler
+import com.deaddict.app.usage.DigitalUsageRepository
 import com.deaddict.database.DeAddictDatabase
 import com.deaddict.database.MIGRATION_1_2
 import com.deaddict.database.repository.LocalProgramRepository
-import com.deaddict.database.repository.LocalTrackingRepository
 import com.deaddict.database.repository.LocalRescueRepository
-import com.deaddict.app.auth.AuthGateway
-import com.deaddict.app.auth.SupabaseAuthGateway
-import com.deaddict.app.auth.createDeAddictSupabaseClient
+import com.deaddict.database.repository.LocalTrackingRepository
+import com.deaddict.programs.DefaultProgramRegistry
+import com.deaddict.programs.ProgramRegistry
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
-import com.deaddict.programs.DefaultProgramRegistry
-import com.deaddict.programs.ProgramRegistry
-import com.deaddict.app.usage.DigitalUsageRepository
-import com.deaddict.app.notifications.NotificationPreferenceStore
-import com.deaddict.app.notifications.NotificationScheduler
-import com.deaddict.app.insights.LocalInsightsRepository
-import com.deaddict.app.privacy.PrivacyPreferenceStore
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -38,8 +41,18 @@ object PersistenceModule {
 
     @Provides
     @Singleton
-    fun authGateway(): AuthGateway =
-        SupabaseAuthGateway(createDeAddictSupabaseClient())
+    fun authGateway(
+        clientProvider: SupabaseClientProvider,
+        syncScheduler: SyncScheduler,
+    ): AuthGateway = SupabaseAuthGateway(
+        client = clientProvider.client,
+        onAuthenticated = syncScheduler::scheduleNow,
+    )
+
+    @Provides
+    @Singleton
+    fun remoteSyncGateway(clientProvider: SupabaseClientProvider): RemoteSyncGateway =
+        SupabaseRemoteSyncGateway(clientProvider.client)
 
     @Provides
     @Singleton

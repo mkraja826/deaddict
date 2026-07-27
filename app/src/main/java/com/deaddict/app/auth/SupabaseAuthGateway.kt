@@ -3,17 +3,19 @@ package com.deaddict.app.auth
 import com.deaddict.app.BuildConfig
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.Google
 import io.github.jan.supabase.auth.providers.builtin.IDToken
 import io.github.jan.supabase.auth.providers.builtin.OTP
 import io.github.jan.supabase.auth.user.UserInfo
 import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.functions.Functions
 import io.github.jan.supabase.postgrest.Postgrest
-import io.github.jan.supabase.auth.OtpType
 
 class SupabaseAuthGateway(
     private val client: SupabaseClient?,
+    private val onAuthenticated: () -> Unit = {},
 ) : AuthGateway {
     override val availability: AuthAvailability =
         if (client == null) {
@@ -39,7 +41,7 @@ class SupabaseAuthGateway(
             email = email.value,
             token = otp.value,
         )
-        return auth.currentUserOrNull().requireUser()
+        return auth.currentUserOrNull().requireUser().also { onAuthenticated() }
     }
 
     override suspend fun signInWithGoogle(token: GoogleIdToken): AuthenticatedUser {
@@ -49,7 +51,7 @@ class SupabaseAuthGateway(
             provider = Google
             nonce = token.rawNonce
         }
-        return auth.currentUserOrNull().requireUser()
+        return auth.currentUserOrNull().requireUser().also { onAuthenticated() }
     }
 
     override suspend fun currentUser(): AuthenticatedUser? =
@@ -76,6 +78,7 @@ fun createDeAddictSupabaseClient(): SupabaseClient? {
     return createSupabaseClient(url, publishableKey) {
         install(Auth)
         install(Postgrest)
+        install(Functions)
     }
 }
 

@@ -8,6 +8,17 @@ import java.time.ZoneId
 
 enum class TrendDirection { IMPROVING, STEADY, INCREASING, NOT_ENOUGH_DATA }
 
+enum class InsightWindow(val days: Long) {
+    SEVEN_DAYS(7),
+    THIRTY_DAYS(30),
+    NINETY_DAYS(90),
+}
+
+data class TriggerFrequency(
+    val trigger: String,
+    val count: Int,
+)
+
 data class SevenDayInsights(
     val checkInCount: Int,
     val slipCount: Int,
@@ -18,6 +29,9 @@ data class SevenDayInsights(
     val rescueCount: Int,
     val rescuesWithReducedUrge: Int,
     val explanation: String,
+    val window: InsightWindow = InsightWindow.SEVEN_DAYS,
+    val triggerFrequencies: List<TriggerFrequency> = emptyList(),
+    val rescueEffectivenessPercent: Int? = null,
 )
 
 object InsightAnalyzer {
@@ -25,14 +39,18 @@ object InsightAnalyzer {
         tracking: List<TrackingEventEntity>,
         rescues: List<RescueSessionEntity>,
         zoneId: ZoneId = ZoneId.systemDefault(),
+        window: InsightWindow = InsightWindow.SEVEN_DAYS,
     ): SevenDayInsights {
         val intensityEvents = tracking.filter { it.urgeIntensity != null }
         val averageUrge = intensityEvents.mapNotNull { it.urgeIntensity }.average().takeUnless(Double::isNaN)
-        val topTrigger = tracking.mapNotNull { it.triggerKey }
-            .groupingBy(String::lowercase)
+        val triggerFrequencies = tracking.mapNotNull { it.triggerKey?.trim()?.lowercase() }
+            .filter(String::isNotBlank)
+            .groupingBy { it }
             .eachCount()
-            .maxWithOrNull(compareBy<Map.Entry<String, Int>> { it.value }.thenByDescending { it.key })
-            ?.key
+            .entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .map { TriggerFrequency(it.key, it.value) }
+        val topTrigger = triggerFrequencies.firstOrNull()?.trigger
         val periodCounts = tracking.groupingBy {
             riskPeriod(Instant.ofEpochMilli(it.occurredAtEpochMillis).atZone(zoneId).hour)
         }.eachCount()
@@ -65,8 +83,10 @@ object InsightAnalyzer {
             val finalUrge = it.finalUrge
             finalUrge != null && finalUrge < it.initialUrge
         }
+        val rescueEffectiveness = rescues.takeIf(List<*>::isNotEmpty)
+            ?.let { ((reducedRescues.toDouble() / it.size) * 100).toInt() }
         val explanation = buildString {
-            append("${tracking.size} check-ins were reviewed from the last seven days.")
+            append("${tracking.size} check-ins were reviewed from the last ${window.days} days.")
             topTrigger?.let { append(" The most recorded trigger was $it.") }
             peakPeriod?.let { append(" Check-ins were most frequent in the $it.") }
             if (rescues.isNotEmpty()) {
@@ -83,6 +103,9 @@ object InsightAnalyzer {
             rescueCount = rescues.size,
             rescuesWithReducedUrge = reducedRescues,
             explanation = explanation,
+            window = window,
+            triggerFrequencies = triggerFrequencies,
+            rescueEffectivenessPercent = rescueEffectiveness,
         )
     }
 

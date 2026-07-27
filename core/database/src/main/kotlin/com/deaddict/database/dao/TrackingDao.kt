@@ -12,6 +12,12 @@ interface TrackingDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(event: TrackingEventEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertFromCloud(event: TrackingEventEntity)
+
+    @Query("SELECT * FROM tracking_events WHERE id = :id LIMIT 1")
+    suspend fun byId(id: String): TrackingEventEntity?
+
     @Query("SELECT * FROM tracking_events WHERE syncState = 'LOCAL_ONLY'")
     suspend fun localOnly(): List<TrackingEventEntity>
 
@@ -23,9 +29,10 @@ interface TrackingDao {
         SELECT * FROM tracking_events
         WHERE programId = :programId
         ORDER BY occurredAtEpochMillis DESC
+        LIMIT :limit
         """,
     )
-    fun observeForProgram(programId: String): Flow<List<TrackingEventEntity>>
+    fun observeForProgram(programId: String, limit: Int): Flow<List<TrackingEventEntity>>
 
     @Query(
         """
@@ -38,4 +45,10 @@ interface TrackingDao {
 
     @Query("UPDATE tracking_events SET syncState = 'SYNCED' WHERE id = :id")
     suspend fun markSynced(id: String): Int
+
+    @Query("DELETE FROM tracking_events WHERE id = :id")
+    suspend fun deleteById(id: String): Int
+
+    @Query("DELETE FROM tracking_events")
+    suspend fun deleteAll(): Int
 }

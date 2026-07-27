@@ -31,6 +31,10 @@ class PrivacyPreferenceStore(private val context: Context) {
     suspend fun setAnalytics(enabled: Boolean) = set(ANALYTICS, enabled)
     suspend fun setUsageMonitoring(enabled: Boolean) = set(USAGE_MONITORING, enabled)
 
+    suspend fun clear() {
+        context.privacyDataStore.edit { it.clear() }
+    }
+
     private suspend fun set(key: androidx.datastore.preferences.core.Preferences.Key<Boolean>, value: Boolean) {
         context.privacyDataStore.edit { it[key] = value }
     }
@@ -42,4 +46,3 @@ class PrivacyPreferenceStore(private val context: Context) {
         val USAGE_MONITORING = booleanPreferencesKey("usage_monitoring_enabled")
     }
 }
-

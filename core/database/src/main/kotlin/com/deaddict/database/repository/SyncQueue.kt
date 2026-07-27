@@ -8,6 +8,8 @@ class SyncQueue(
     private val dao: SyncOutboxDao,
     private val clock: EpochClock = EpochClock(System::currentTimeMillis),
 ) {
+    suspend fun resetInterruptedClaims(): Int = dao.resetInterruptedClaims()
+
     suspend fun nextBatch(limit: Int = 25): List<SyncOutboxEntity> {
         require(limit in 1..100)
         return dao.nextBatch(clock.nowMillis(), limit)
@@ -17,11 +19,16 @@ class SyncQueue(
 
     suspend fun complete(id: String): Boolean = dao.complete(id) == 1
 
-    suspend fun fail(id: String, currentAttemptCount: Int, errorCode: String): Boolean {
+    suspend fun fail(
+        id: String,
+        currentAttemptCount: Int,
+        errorCode: String,
+        permanent: Boolean = false,
+    ): Boolean {
         require(currentAttemptCount >= 0)
         require(errorCode.matches(Regex("[A-Z0-9_]{1,48}")))
         val nextAttemptCount = currentAttemptCount + 1
-        val deadLetter = nextAttemptCount >= MAX_ATTEMPTS
+        val deadLetter = permanent || nextAttemptCount >= MAX_ATTEMPTS
         val delay = min(
             BASE_DELAY_MILLIS * (1L shl currentAttemptCount.coerceAtMost(10)),
             MAX_DELAY_MILLIS,
@@ -40,4 +47,3 @@ class SyncQueue(
         const val MAX_DELAY_MILLIS = 6 * 60 * 60 * 1_000L
     }
 }
-

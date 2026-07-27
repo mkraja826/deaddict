@@ -16,4 +16,13 @@
     <string name="safety_immediate_danger">यदि आपको तत्काल खतरा हो सकता है या गंभीर विड्रॉल लक्षण हैं, तो स्थानीय आपातकालीन सेवाओं या योग्य चिकित्सक से संपर्क करें। DeAddict डिटॉक्स या टेपर निर्देश नहीं देता।</string>
     <string name="delete_local_data">स्थानीय रिकवरी डेटा हटाएँ</string>
     <string name="privacy_security">गोपनीयता और सुरक्षा</string>
+    <string name="biometric_unlock_title">DeAddict अनलॉक करें</string>
+    <string name="biometric_unlock_subtitle">अपनी पहचान की पुष्टि करें</string>
+    <string name="accessibility_hidden">छिपा हुआ</string>
+    <string name="accessibility_selected">चयनित</string>
+    <string name="accessibility_not_selected">चयनित नहीं</string>
+    <plurals name="accessibility_day_streak">
+        <item quantity="one">%d दिन की निरंतरता</item>
+        <item quantity="other">%d दिनों की निरंतरता</item>
+    </plurals>
 </resources>

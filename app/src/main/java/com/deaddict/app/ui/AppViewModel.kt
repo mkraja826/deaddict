@@ -1,44 +1,45 @@
 package com.deaddict.app.ui
 
+import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.deaddict.database.entity.ActiveProgramEntity
-import com.deaddict.database.entity.TrackingEventKind
-import com.deaddict.database.repository.LocalProgramRepository
-import com.deaddict.database.repository.LocalTrackingRepository
-import com.deaddict.database.repository.NewTrackingEvent
-import com.deaddict.database.repository.SyncPolicy
-import com.deaddict.database.repository.LocalRescueRepository
-import com.deaddict.database.repository.NewRescueSession
-import com.deaddict.database.entity.RescueOutcome
-import com.deaddict.programs.ProgramDefinition
-import com.deaddict.programs.ProgramId
-import com.deaddict.programs.ProgramRegistry
-import com.deaddict.app.usage.DailyUsageEstimate
-import com.deaddict.app.usage.DigitalUsageRepository
-import com.deaddict.app.rescue.RescueFlow
-import com.deaddict.app.rescue.RescueFlowState
+import com.deaddict.app.billing.BillingUiState
+import com.deaddict.app.billing.PlayBillingManager
+import com.deaddict.app.insights.LocalInsightsRepository
+import com.deaddict.app.insights.SevenDayInsights
 import com.deaddict.app.notifications.NotificationPreferenceStore
 import com.deaddict.app.notifications.NotificationPreferences
 import com.deaddict.app.notifications.NotificationScheduler
-import com.deaddict.app.insights.LocalInsightsRepository
-import com.deaddict.app.insights.SevenDayInsights
+import com.deaddict.app.privacy.AccountDeletionCoordinator
 import com.deaddict.app.privacy.PrivacyPreferenceStore
 import com.deaddict.app.privacy.PrivacyPreferences
+import com.deaddict.app.rescue.RescueFlow
+import com.deaddict.app.rescue.RescueFlowState
+import com.deaddict.app.usage.DailyUsageEstimate
+import com.deaddict.app.usage.DigitalUsageRepository
 import com.deaddict.database.DeAddictDatabase
-import android.app.Activity
-import com.deaddict.app.billing.BillingUiState
-import com.deaddict.app.billing.PlayBillingManager
+import com.deaddict.database.entity.ActiveProgramEntity
+import com.deaddict.database.entity.RescueOutcome
+import com.deaddict.database.entity.TrackingEventKind
+import com.deaddict.database.repository.LocalProgramRepository
+import com.deaddict.database.repository.LocalRescueRepository
+import com.deaddict.database.repository.LocalTrackingRepository
+import com.deaddict.database.repository.NewRescueSession
+import com.deaddict.database.repository.NewTrackingEvent
+import com.deaddict.database.repository.SyncPolicy
+import com.deaddict.programs.ProgramDefinition
+import com.deaddict.programs.ProgramId
+import com.deaddict.programs.ProgramRegistry
 import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import javax.inject.Inject
 
 enum class AppTab {
     HOME,
@@ -61,6 +62,8 @@ data class AppUiState(
     val insights: SevenDayInsights? = null,
     val privacyPreferences: PrivacyPreferences = PrivacyPreferences(),
     val billing: BillingUiState = BillingUiState(),
+    val accountDeletionAvailable: Boolean = false,
+    val accountDeletionInProgress: Boolean = false,
 ) {
     val requiresOnboarding: Boolean
         get() = !isLoading && activePrograms.isEmpty()
@@ -86,6 +89,7 @@ class AppViewModel @Inject constructor(
     private val privacyPreferenceStore: PrivacyPreferenceStore,
     private val database: DeAddictDatabase,
     private val billingManager: PlayBillingManager,
+    private val accountDeletionCoordinator: AccountDeletionCoordinator,
 ) : ViewModel() {
     private val selectedTab = MutableStateFlow(AppTab.HOME)
     private val message = MutableStateFlow<String?>(null)
@@ -94,6 +98,7 @@ class AppViewModel @Inject constructor(
     private val rescueFlow = RescueFlow()
     private val rescueState = MutableStateFlow(RescueFlowState())
     private val insights = MutableStateFlow<SevenDayInsights?>(null)
+    private val accountDeletionInProgress = MutableStateFlow(false)
     private val privacyPreferences = privacyPreferenceStore.preferences
         .stateIn(
             scope = viewModelScope,
@@ -144,16 +149,22 @@ class AppViewModel @Inject constructor(
         insights,
         privacyPreferences,
         billingManager.state,
-    ) { base, currentInsights, privacy, billing ->
+        accountDeletionInProgress,
+    ) { base, currentInsights, privacy, billing, deletingAccount ->
         base.copy(
             insights = currentInsights,
             privacyPreferences = privacy,
             billing = billing,
+            accountDeletionAvailable = accountDeletionCoordinator.available,
+            accountDeletionInProgress = deletingAccount,
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = AppUiState(availablePrograms = definitions),
+        initialValue = AppUiState(
+            availablePrograms = definitions,
+            accountDeletionAvailable = accountDeletionCoordinator.available,
+        ),
     )
 
     init {
@@ -357,10 +368,30 @@ class AppViewModel @Inject constructor(
         }
     }
 
+    fun deleteAccount() {
+        if (accountDeletionInProgress.value) return
+        viewModelScope.launch {
+            accountDeletionInProgress.value = true
+            runCatching {
+                accountDeletionCoordinator.deleteAccount()
+            }.onSuccess { result ->
+                insights.value = null
+                selectedTab.value = AppTab.HOME
+                message.value = if (result.localCleanupComplete) {
+                    "Account and recovery data deleted."
+                } else {
+                    "Account deleted. Some local cleanup could not finish; clear DeAddict app storage before using it again."
+                }
+            }.onFailure {
+                message.value = "Account deletion could not be confirmed. Check whether you can still sign in before retrying."
+            }
+            accountDeletionInProgress.value = false
+        }
+    }
+
     fun refreshBilling() = billingManager.refresh()
 
     fun purchasePlus(activity: Activity, offerToken: String) {
         billingManager.launchPurchase(activity, offerToken)
     }
-
 }

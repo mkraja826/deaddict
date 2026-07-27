@@ -16,4 +16,13 @@
     <string name="safety_immediate_danger">మీరు తక్షణ ప్రమాదంలో ఉండవచ్చు లేదా తీవ్రమైన ఉపసంహరణ లక్షణాలు ఉంటే, స్థానిక అత్యవసర సేవలను లేదా అర్హత కలిగిన వైద్య నిపుణుడిని సంప్రదించండి. DeAddict డిటాక్స్ లేదా టేపర్ సూచనలు ఇవ్వదు.</string>
     <string name="delete_local_data">స్థానిక రికవరీ డేటాను తొలగించండి</string>
     <string name="privacy_security">గోప్యత మరియు భద్రత</string>
+    <string name="biometric_unlock_title">DeAddict‌ను అన్‌లాక్ చేయండి</string>
+    <string name="biometric_unlock_subtitle">మీ గుర్తింపును నిర్ధారించండి</string>
+    <string name="accessibility_hidden">దాచబడింది</string>
+    <string name="accessibility_selected">ఎంచుకోబడింది</string>
+    <string name="accessibility_not_selected">ఎంచుకోబడలేదు</string>
+    <plurals name="accessibility_day_streak">
+        <item quantity="one">%d రోజు పరంపర</item>
+        <item quantity="other">%d రోజుల పరంపర</item>
+    </plurals>
 </resources>

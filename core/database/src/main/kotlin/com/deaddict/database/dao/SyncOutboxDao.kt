@@ -21,6 +21,9 @@ interface SyncOutboxDao {
     )
     suspend fun nextBatch(now: Long, limit: Int): List<SyncOutboxEntity>
 
+    @Query("UPDATE sync_outbox SET state = 'PENDING' WHERE state = 'IN_FLIGHT'")
+    suspend fun resetInterruptedClaims(): Int
+
     @Query(
         """
         UPDATE sync_outbox SET state = 'IN_FLIGHT'
@@ -34,6 +37,29 @@ interface SyncOutboxDao {
 
     @Query(
         """
+        UPDATE sync_outbox
+        SET state = 'COMPLETED', lastErrorCode = 'SUPERSEDED_BY_DELETE'
+        WHERE aggregateType = :aggregateType
+          AND aggregateId = :aggregateId
+          AND operation = 'UPSERT'
+          AND state IN ('PENDING', 'IN_FLIGHT')
+        """,
+    )
+    suspend fun supersedePendingUpsert(aggregateType: String, aggregateId: String): Int
+
+    @Query(
+        """
+        SELECT aggregateId FROM sync_outbox
+        WHERE aggregateType = :aggregateType AND operation = 'DELETE'
+        """,
+    )
+    suspend fun deleteTombstoneIds(aggregateType: String): List<String>
+
+    @Query("DELETE FROM sync_outbox")
+    suspend fun deleteAll(): Int
+
+    @Query(
+        """
         UPDATE sync_outbox SET
           state = CASE WHEN :deadLetter THEN 'DEAD_LETTER' ELSE 'PENDING' END,
           attemptCount = attemptCount + 1,
@@ -44,4 +70,3 @@ interface SyncOutboxDao {
     )
     suspend fun retry(id: String, nextAttempt: Long, errorCode: String, deadLetter: Boolean): Int
 }
-

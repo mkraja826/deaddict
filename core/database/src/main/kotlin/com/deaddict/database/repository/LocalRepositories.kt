@@ -82,6 +82,15 @@ class LocalProgramRepository(
         }
         return id
     }
+
+    suspend fun delete(id: String): Boolean = database.withTransaction {
+        val entity = database.programDao().byId(id) ?: return@withTransaction false
+        if (entity.syncState != SyncState.LOCAL_ONLY) {
+            database.enqueueDelete(SyncAggregateType.ACTIVE_PROGRAM, id, clock.nowMillis(), ids)
+        }
+        check(database.programDao().deleteById(id) == 1)
+        true
+    }
 }
 
 class LocalTrackingRepository(
@@ -89,8 +98,13 @@ class LocalTrackingRepository(
     private val clock: EpochClock = EpochClock(System::currentTimeMillis),
     private val ids: IdGenerator = IdGenerator { UUID.randomUUID().toString() },
 ) {
-    fun observeForProgram(programId: ProgramId): Flow<List<TrackingEventEntity>> =
-        database.trackingDao().observeForProgram(programId.value)
+    fun observeForProgram(
+        programId: ProgramId,
+        limit: Int = DEFAULT_TRACKING_OBSERVATION_LIMIT,
+    ): Flow<List<TrackingEventEntity>> {
+        require(limit in 1..MAX_TRACKING_OBSERVATION_LIMIT)
+        return database.trackingDao().observeForProgram(programId.value, limit)
+    }
 
     suspend fun record(input: NewTrackingEvent, syncPolicy: SyncPolicy): String {
         val id = ids.next()
@@ -127,6 +141,20 @@ class LocalTrackingRepository(
             }
         }
         return id
+    }
+
+    suspend fun delete(id: String): Boolean = database.withTransaction {
+        val entity = database.trackingDao().byId(id) ?: return@withTransaction false
+        if (entity.syncState != SyncState.LOCAL_ONLY) {
+            database.enqueueDelete(SyncAggregateType.TRACKING_EVENT, id, clock.nowMillis(), ids)
+        }
+        check(database.trackingDao().deleteById(id) == 1)
+        true
+    }
+
+    private companion object {
+        const val DEFAULT_TRACKING_OBSERVATION_LIMIT = 500
+        const val MAX_TRACKING_OBSERVATION_LIMIT = 2_000
     }
 }
 
@@ -172,6 +200,35 @@ class LocalRescueRepository(
         }
         return id
     }
+
+    suspend fun delete(id: String): Boolean = database.withTransaction {
+        val entity = database.rescueDao().byId(id) ?: return@withTransaction false
+        if (entity.syncState != SyncState.LOCAL_ONLY) {
+            database.enqueueDelete(SyncAggregateType.RESCUE_SESSION, id, clock.nowMillis(), ids)
+        }
+        check(database.rescueDao().deleteById(id) == 1)
+        true
+    }
+}
+
+private suspend fun DeAddictDatabase.enqueueDelete(
+    aggregateType: SyncAggregateType,
+    aggregateId: String,
+    now: Long,
+    ids: IdGenerator,
+) {
+    syncOutboxDao().supersedePendingUpsert(aggregateType.name, aggregateId)
+    val inserted = syncOutboxDao().enqueue(
+        outbox(
+            id = ids.next(),
+            aggregateType = aggregateType,
+            aggregateId = aggregateId,
+            operation = SyncOperation.DELETE,
+            payload = """{"id":"$aggregateId"}""",
+            now = now,
+        ),
+    )
+    check(inserted != -1L) { "Delete operation is already queued" }
 }
 
 private fun SyncPolicy.toInitialSyncState(): SyncState =
