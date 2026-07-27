@@ -6,3 +6,12 @@ local.properties
 *.iml
 captures/
 .DS_Store
+
+.kotlin/
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+keystore.properties
+secrets.properties
