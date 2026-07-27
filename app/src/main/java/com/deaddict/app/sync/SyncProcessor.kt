@@ -54,12 +54,14 @@ class RoomSyncStore(
 
     override suspend fun complete(item: SyncOutboxEntity) {
         database.withTransaction {
-            val marked = when (item.aggregateType) {
-                SyncAggregateType.ACTIVE_PROGRAM -> database.programDao().markSynced(item.aggregateId)
-                SyncAggregateType.TRACKING_EVENT -> database.trackingDao().markSynced(item.aggregateId)
-                SyncAggregateType.RESCUE_SESSION -> database.rescueDao().markSynced(item.aggregateId)
+            if (item.operation == SyncOperation.UPSERT) {
+                val marked = when (item.aggregateType) {
+                    SyncAggregateType.ACTIVE_PROGRAM -> database.programDao().markSynced(item.aggregateId)
+                    SyncAggregateType.TRACKING_EVENT -> database.trackingDao().markSynced(item.aggregateId)
+                    SyncAggregateType.RESCUE_SESSION -> database.rescueDao().markSynced(item.aggregateId)
+                }
+                check(marked == 1) { "Synchronized local row is missing" }
             }
-            check(marked == 1) { "Synchronized local row is missing" }
             check(queue.complete(item.id)) { "Outbox completion failed" }
         }
     }
@@ -97,14 +99,14 @@ class SyncProcessor(
         val items = store.nextBatch(limit)
         if (items.isEmpty()) return SyncRunResult.IDLE
 
-        var uploaded = false
+        var completed = false
         var retryNeeded = false
         for (item in items) {
             if (!store.claim(item.id)) continue
             try {
-                upload(userId, item)
+                applyOperation(userId, item)
                 store.complete(item)
-                uploaded = true
+                completed = true
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: PermanentSyncFailure) {
@@ -119,33 +121,38 @@ class SyncProcessor(
 
         return when {
             retryNeeded -> SyncRunResult.RETRY
-            uploaded -> SyncRunResult.SUCCESS
+            completed -> SyncRunResult.SUCCESS
             else -> SyncRunResult.IDLE
         }
     }
 
-    private suspend fun upload(userId: String, item: SyncOutboxEntity) {
-        if (item.operation != SyncOperation.UPSERT) {
-            throw PermanentSyncFailure("UNSUPPORTED_OPERATION")
-        }
-        when (item.aggregateType) {
-            SyncAggregateType.ACTIVE_PROGRAM -> remote.upsertProgram(
-                userId,
-                store.program(item.aggregateId)
-                    ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
+    private suspend fun applyOperation(userId: String, item: SyncOutboxEntity) {
+        when (item.operation) {
+            SyncOperation.DELETE -> remote.deleteRecord(
+                userId = userId,
+                aggregateType = item.aggregateType,
+                aggregateId = item.aggregateId,
             )
 
-            SyncAggregateType.TRACKING_EVENT -> remote.upsertTrackingEvent(
-                userId,
-                store.trackingEvent(item.aggregateId)
-                    ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
-            )
+            SyncOperation.UPSERT -> when (item.aggregateType) {
+                SyncAggregateType.ACTIVE_PROGRAM -> remote.upsertProgram(
+                    userId,
+                    store.program(item.aggregateId)
+                        ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
+                )
 
-            SyncAggregateType.RESCUE_SESSION -> remote.upsertRescueSession(
-                userId,
-                store.rescueSession(item.aggregateId)
-                    ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
-            )
+                SyncAggregateType.TRACKING_EVENT -> remote.upsertTrackingEvent(
+                    userId,
+                    store.trackingEvent(item.aggregateId)
+                        ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
+                )
+
+                SyncAggregateType.RESCUE_SESSION -> remote.upsertRescueSession(
+                    userId,
+                    store.rescueSession(item.aggregateId)
+                        ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
+                )
+            }
         }
     }
 }
