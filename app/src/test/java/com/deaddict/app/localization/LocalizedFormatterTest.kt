@@ -16,7 +16,7 @@ class LocalizedFormatterTest {
 
     @Test
     fun formatsMinorCurrencyUnitsWithoutFloatingPointInput() {
-        assertEquals("$12.34", LocalizedFormatter.moneyMinorUnits(1_234, "USD", Locale.US))
+        assertEquals("\$12.34", LocalizedFormatter.moneyMinorUnits(1_234, "USD", Locale.US))
         assertEquals("¥1,234", LocalizedFormatter.moneyMinorUnits(1_234, "JPY", Locale.JAPAN))
     }
 
