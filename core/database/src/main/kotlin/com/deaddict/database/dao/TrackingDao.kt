@@ -12,6 +12,9 @@ interface TrackingDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(event: TrackingEventEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertFromCloud(event: TrackingEventEntity)
+
     @Query("SELECT * FROM tracking_events WHERE id = :id LIMIT 1")
     suspend fun byId(id: String): TrackingEventEntity?
 
