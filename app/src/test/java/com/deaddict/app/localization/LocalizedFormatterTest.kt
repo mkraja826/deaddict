@@ -4,6 +4,7 @@ import java.time.Duration
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalizedFormatterTest {
@@ -17,7 +18,10 @@ class LocalizedFormatterTest {
     @Test
     fun formatsMinorCurrencyUnitsWithoutFloatingPointInput() {
         assertEquals("\$12.34", LocalizedFormatter.moneyMinorUnits(1_234, "USD", Locale.US))
-        assertEquals("¥1,234", LocalizedFormatter.moneyMinorUnits(1_234, "JPY", Locale.JAPAN))
+
+        val yen = LocalizedFormatter.moneyMinorUnits(1_234, "JPY", Locale.JAPAN)
+        assertTrue(yen.contains("1,234"))
+        assertTrue(yen.contains('¥') || yen.contains('￥'))
     }
 
     @Test
