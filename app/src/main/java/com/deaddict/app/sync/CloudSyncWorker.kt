@@ -1,7 +1,6 @@
 package com.deaddict.app.sync
 
 import android.content.Context
-import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.deaddict.database.DeAddictDatabase
