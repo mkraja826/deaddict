@@ -28,16 +28,17 @@ Overall progress: **85%**
 - Local-first and guest-first are architectural invariants.
 - Safety and essential privacy features cannot be paywalled.
 - Room schema v2, atomic local repositories, and the durable sync outbox are implemented.
-- Authenticated Supabase upload now processes programs, tracking events, and Rescue sessions through a network-constrained WorkManager pipeline with atomic claims, bounded retries, dead-lettering, interrupted-claim recovery, and private-note exclusion.
-- Cloud restore now downloads the three user-owned datasets after upload processing and applies them transactionally without overwriting `LOCAL_ONLY` or `PENDING` rows; existing local private notes are preserved.
-- Durable delete operations now supersede pending upserts, remove local records atomically, retry offline cloud deletion, and complete idempotently without requiring the deleted local row.
-- GitHub Actions gates JVM tests, Android lint, debug/release builds, reports, and APK artifacts. The connected upload, restore, and deletion build is green.
+- Authenticated Supabase upload processes programs, tracking events, and Rescue sessions through a network-constrained WorkManager pipeline with atomic claims, bounded retries, dead-lettering, interrupted-claim recovery, and private-note exclusion.
+- Cloud restore downloads the three user-owned datasets after upload processing and applies them transactionally without overwriting `LOCAL_ONLY` or `PENDING` rows; existing local private notes are preserved.
+- Durable delete operations supersede pending upserts, remove local records atomically, retry offline cloud deletion, and complete idempotently without requiring the deleted local row.
+- Every queued or completed delete remains a local tombstone, preventing cloud restore from resurrecting data the user removed. Restore is deferred until the durable queue is fully drained.
+- GitHub Actions gates JVM tests, Android lint, debug/release builds, reports, complete Gradle logs, and APK artifacts. The connected upload, restore, deletion, and account-deletion UI build is green.
 - Phase 2 remains partial until broader timestamp conflict reconciliation, account-switch coverage, and real-device offline/reconnect verification are complete.
 - Phase 3 Android Auth, explicit guest migration consent, local migrations, and RLS tests are implemented.
 - The dedicated `Deaddict` Supabase project has the initial schema, least-privilege grants, own-row RLS, tracking-trigger migration, and an active JWT-protected `delete-account` Edge Function deployed with no security-advisor findings.
 - Phase 3 remains partial until Google OAuth credentials and end-to-end provider sign-in are verified.
-- Phase 4 now includes first-run program selection, the five-tab shell, local Home state, urge tracking, and safety-aware recovery guidance.
-- Track now supports activity, urge, craving, slip, quantity, duration, cost, intensity, and trigger logging.
+- Phase 4 includes first-run program selection, the five-tab shell, local Home state, urge tracking, and safety-aware recovery guidance.
+- Track supports activity, urge, craving, slip, quantity, duration, cost, intensity, and trigger logging.
 - Phase 4 remains partial until editable plan goals, UI tests, and device visual QA are complete.
 - Phase 5 includes explicit Usage Access consent and daily app-level time, opening, session, rapid-reopening, morning, and late-night estimates.
 - Phase 5 remains partial until persisted trends, warnings, focus sessions, and device-level accuracy QA are complete.
@@ -47,8 +48,9 @@ Overall progress: **85%**
 - Phase 7 remains partial until risk/bedtime/weekly/focus schedulers, FCM credentials, token lifecycle, and device delivery QA are complete.
 - Phase 8 includes explainable seven-day summaries, trigger and risk-period patterns, intensity trends, slip counts, and Rescue effectiveness.
 - Phase 8 remains partial until long-term reports, export-ready charts, and device UI QA are complete.
-- Phase 9 includes biometric/device-credential lock, screenshot and recent-preview protection, analytics off by default, usage-monitoring control, confirmed local recovery-data deletion, durable cloud record deletion, and a server-side account-deletion coordinator that clears the local session, Room data, privacy preferences, reminders, and sync work after server confirmation.
-- Phase 9 remains partial until the destructive confirmation UI is connected, a real signed-in account deletion is device-tested, and data export, discreet launcher identity, granular sharing, and per-program management are complete.
+- Phase 9 includes biometric/device-credential lock, screenshot and recent-preview protection, analytics off by default, usage-monitoring control, confirmed local recovery-data deletion, durable cloud record deletion, and a signed-in-only Profile action with an explicit irreversible confirmation.
+- The account-deletion coordinator calls the JWT-protected server endpoint first, then clears the local Auth session, Room data, privacy preferences, notification preferences, reminders, and sync work. Partial local-cleanup outcomes are reported accurately.
+- Phase 9 remains partial until a disposable real account is deleted on a release-signed device build and data export, discreet launcher identity, granular sharing, and per-program management are complete.
 - Phase 10 includes Play Billing 9.1.0, Play-sourced subscription offers, purchase restoration, pending-purchase handling, and a centralized free/Plus entitlement policy.
 - Rescue, safety resources, deletion, biometric protection, and essential privacy are explicitly tested as permanently free.
 - Phase 10 remains partial until Play Console products/base plans, backend verification and acknowledgement, RTDN lifecycle sync, license testing, and end-to-end purchase QA are complete.
