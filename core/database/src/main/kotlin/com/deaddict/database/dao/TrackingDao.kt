@@ -12,6 +12,9 @@ interface TrackingDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(event: TrackingEventEntity)
 
+    @Query("SELECT * FROM tracking_events WHERE id = :id LIMIT 1")
+    suspend fun byId(id: String): TrackingEventEntity?
+
     @Query("SELECT * FROM tracking_events WHERE syncState = 'LOCAL_ONLY'")
     suspend fun localOnly(): List<TrackingEventEntity>
 
