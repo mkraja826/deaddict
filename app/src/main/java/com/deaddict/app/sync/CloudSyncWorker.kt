@@ -8,6 +8,7 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -20,22 +21,36 @@ class CloudSyncWorker(
             applicationContext,
             CloudSyncEntryPoint::class.java,
         )
-        val processor = SyncProcessor(
-            store = RoomSyncStore(entryPoint.database()),
-            remote = entryPoint.remoteSyncGateway(),
+        val database = entryPoint.database()
+        val remote = entryPoint.remoteSyncGateway()
+        val uploadProcessor = SyncProcessor(
+            store = RoomSyncStore(database),
+            remote = remote,
         )
 
-        repeat(MAX_BATCHES_PER_RUN) {
-            when (processor.runBatch()) {
-                SyncRunResult.SUCCESS -> Unit
+        var batchCount = 0
+        while (batchCount < MAX_BATCHES_PER_RUN) {
+            when (uploadProcessor.runBatch()) {
+                SyncRunResult.SUCCESS -> batchCount += 1
                 SyncRunResult.RETRY -> return@withLock Result.retry()
-                SyncRunResult.IDLE,
+                SyncRunResult.IDLE -> break
                 SyncRunResult.UNAVAILABLE,
                 SyncRunResult.SIGNED_OUT,
                 -> return@withLock Result.success()
             }
         }
-        Result.success()
+
+        return@withLock try {
+            CloudRestoreProcessor(
+                store = RoomRestoreStore(database),
+                remote = remote,
+            ).restore()
+            Result.success()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            Result.retry()
+        }
     }
 
     private companion object {
