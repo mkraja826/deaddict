@@ -65,7 +65,7 @@ class AccountDeletionCoordinator @Inject constructor(
             )
         }
         return AccountDeletionResult(
-            localCleanupComplete = cleanupResults.all(Result<Unit>::isSuccess),
+            localCleanupComplete = cleanupResults.all { it.isSuccess },
         )
     }
 }
