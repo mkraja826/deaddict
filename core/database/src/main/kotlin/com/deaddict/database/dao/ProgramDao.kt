@@ -15,11 +15,17 @@ interface ProgramDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(program: ActiveProgramEntity)
 
+    @Query("SELECT * FROM active_programs WHERE id = :id LIMIT 1")
+    suspend fun byId(id: String): ActiveProgramEntity?
+
     @Query("SELECT * FROM active_programs WHERE syncState = 'LOCAL_ONLY'")
     suspend fun localOnly(): List<ActiveProgramEntity>
 
     @Query("UPDATE active_programs SET syncState = 'PENDING' WHERE id = :id AND syncState = 'LOCAL_ONLY'")
     suspend fun markPending(id: String): Int
+
+    @Query("UPDATE active_programs SET syncState = 'SYNCED' WHERE id = :id")
+    suspend fun markSynced(id: String): Int
 
     @Query(
         """
