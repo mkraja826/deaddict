@@ -48,6 +48,10 @@ class NotificationPreferenceStore(private val context: Context) {
         context.notificationDataStore.edit { it[LAST_DAILY] = timestamp }
     }
 
+    suspend fun clear() {
+        context.notificationDataStore.edit { it.clear() }
+    }
+
     private companion object {
         val DAILY_ENABLED = booleanPreferencesKey("daily_check_in_enabled")
         val QUIET_START = intPreferencesKey("quiet_start_hour")
@@ -55,4 +59,3 @@ class NotificationPreferenceStore(private val context: Context) {
         val LAST_DAILY = longPreferencesKey("last_daily_shown_at")
     }
 }
-
