@@ -1,10 +1,11 @@
 # Known Limitations
 
-- The current milestone is an advanced local-first MVP with authenticated cloud upload, restore, and durable record deletion; it is not yet a production release.
+- The current milestone is an advanced local-first MVP with authenticated cloud upload, restore, durable record deletion, and account deletion; it is not yet a production release.
 - Supabase synchronization supports upserts and idempotent deletes for programs, tracking events, and Rescue sessions. Account switching, granular conflict resolution, and physical-device offline/reconnect validation remain.
-- Cloud restore protects unsynced `LOCAL_ONLY` and `PENDING` records and preserves private tracking notes, but broader multi-device conflict behavior still requires integration testing.
+- Cloud restore protects unsynced `LOCAL_ONLY` and `PENDING` records, preserves private tracking notes, and respects durable delete tombstones. Broader multi-device conflict behavior still requires integration testing.
 - The dedicated DeAddict Supabase project, least-privilege table grants, own-row RLS policies, tracking-trigger schema, and JWT-protected `delete-account` Edge Function are deployed. Google OAuth credentials and end-to-end provider sign-in remain unverified.
-- The account-deletion coordinator calls the server first, then clears the local session, Room data, privacy preferences, reminders, and sync work. The destructive confirmation UI and real-account device test remain.
+- Signed-in users receive a Profile-only account-deletion action with an explicit irreversible confirmation. The coordinator calls the server first, then clears the Auth session, Room data, privacy and notification preferences, reminders, and sync work.
+- Account deletion still requires a disposable real-account test on a release-signed device build. No destructive live test has been run against a real user account during implementation.
 - Editable recovery-plan goals remain; tracking entry types are implemented.
 - Compose UI has compiled but has not yet received the full emulator/device visual and accessibility matrix.
 - Digital usage estimates are derived from Android foreground events and may vary by device; persisted trends, warnings, and focus sessions remain.
@@ -13,7 +14,7 @@
 - Insights currently cover seven days; long-term reports, charts, comparison ranges, and export-ready report layouts remain.
 - Data export, per-program management, discreet launcher identity, and granular accountability sharing remain.
 - Billing uses the `deaddict_plus` subscription product, but Play Console base plans and secure backend purchase verification/acknowledgement are not configured. Unverified purchases never grant Plus.
-- GitHub Actions verifies JVM tests, Android lint, debug and minified release builds, reports, and APK artifacts. Broader usage-estimation accuracy still requires physical-device sampling across OEMs.
+- GitHub Actions verifies JVM tests, Android lint, debug and minified release builds, reports, full Gradle logs, and APK artifacts. Broader usage-estimation accuracy still requires physical-device sampling across OEMs.
 - Hindi and Telugu currently cover primary navigation and critical safety/privacy/billing boundaries, not the complete interface. Translations still require professional review, and no market beyond India is enabled.
 - The privacy-boundary Compose test and Room migration/repository tests pass on a Pixel 7 API 35 emulator. TalkBack, large-text, reduced-motion, contrast, RTL, and wider API/device checks remain manual release gates.
 - The generated release APK is unsigned. Signing, Play App Signing, closed-track upload, tester feedback, crash/ANR monitoring, dependency review, and clinical safety review remain.
