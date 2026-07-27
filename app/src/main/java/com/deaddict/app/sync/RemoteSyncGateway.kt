@@ -10,6 +10,46 @@ import java.time.Instant
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+data class CloudSnapshot(
+    val programs: List<RemoteProgramRecord>,
+    val trackingEvents: List<RemoteTrackingRecord>,
+    val rescueSessions: List<RemoteRescueRecord>,
+)
+
+data class RemoteProgramRecord(
+    val id: String,
+    val programId: String,
+    val activatedAtEpochMillis: Long,
+    val archivedAtEpochMillis: Long?,
+    val clientUpdatedAtEpochMillis: Long,
+)
+
+data class RemoteTrackingRecord(
+    val id: String,
+    val programId: String,
+    val kind: String,
+    val quantity: Double?,
+    val unit: String?,
+    val costMinorUnits: Long?,
+    val urgeIntensity: Int?,
+    val triggerKey: String?,
+    val occurredAtEpochMillis: Long,
+    val clientUpdatedAtEpochMillis: Long,
+)
+
+data class RemoteRescueRecord(
+    val id: String,
+    val programId: String,
+    val startedAtEpochMillis: Long,
+    val completedAtEpochMillis: Long?,
+    val initialUrge: Int,
+    val finalUrge: Int?,
+    val triggerKey: String?,
+    val actionKeys: List<String>,
+    val outcome: String?,
+    val clientUpdatedAtEpochMillis: Long,
+)
+
 interface RemoteSyncGateway {
     val available: Boolean
 
@@ -20,6 +60,8 @@ interface RemoteSyncGateway {
     suspend fun upsertTrackingEvent(userId: String, event: TrackingEventEntity)
 
     suspend fun upsertRescueSession(userId: String, session: RescueSessionEntity)
+
+    suspend fun downloadSnapshot(): CloudSnapshot
 }
 
 class SupabaseRemoteSyncGateway(
@@ -85,6 +127,24 @@ class SupabaseRemoteSyncGateway(
         )
     }
 
+    override suspend fun downloadSnapshot(): CloudSnapshot {
+        val supabase = requireClient()
+        return CloudSnapshot(
+            programs = supabase.from("user_programs")
+                .select()
+                .decodeList<CloudProgram>()
+                .map(CloudProgram::toRemoteRecord),
+            trackingEvents = supabase.from("tracking_events")
+                .select()
+                .decodeList<CloudTrackingEvent>()
+                .map(CloudTrackingEvent::toRemoteRecord),
+            rescueSessions = supabase.from("rescue_sessions")
+                .select()
+                .decodeList<CloudRescueSession>()
+                .map(CloudRescueSession::toRemoteRecord),
+        )
+    }
+
     private fun requireClient(): SupabaseClient =
         checkNotNull(client) { "Supabase is not configured" }
 }
@@ -97,7 +157,15 @@ private data class CloudProgram(
     @SerialName("activated_at") val activatedAt: String,
     @SerialName("archived_at") val archivedAt: String?,
     @SerialName("client_updated_at") val clientUpdatedAt: String,
-)
+) {
+    fun toRemoteRecord() = RemoteProgramRecord(
+        id = id,
+        programId = programId,
+        activatedAtEpochMillis = activatedAt.toEpochMillis(),
+        archivedAtEpochMillis = archivedAt?.toEpochMillis(),
+        clientUpdatedAtEpochMillis = clientUpdatedAt.toEpochMillis(),
+    )
+}
 
 @Serializable
 private data class CloudTrackingEvent(
@@ -112,7 +180,20 @@ private data class CloudTrackingEvent(
     @SerialName("trigger_key") val triggerKey: String?,
     @SerialName("occurred_at") val occurredAt: String,
     @SerialName("client_updated_at") val clientUpdatedAt: String,
-)
+) {
+    fun toRemoteRecord() = RemoteTrackingRecord(
+        id = id,
+        programId = programId,
+        kind = kind,
+        quantity = quantity,
+        unit = unit,
+        costMinorUnits = costMinorUnits,
+        urgeIntensity = urgeIntensity,
+        triggerKey = triggerKey,
+        occurredAtEpochMillis = occurredAt.toEpochMillis(),
+        clientUpdatedAtEpochMillis = clientUpdatedAt.toEpochMillis(),
+    )
+}
 
 @Serializable
 private data class CloudRescueSession(
@@ -127,6 +208,21 @@ private data class CloudRescueSession(
     @SerialName("action_keys") val actionKeys: List<String>,
     val outcome: String?,
     @SerialName("client_updated_at") val clientUpdatedAt: String,
-)
+) {
+    fun toRemoteRecord() = RemoteRescueRecord(
+        id = id,
+        programId = programId,
+        startedAtEpochMillis = startedAt.toEpochMillis(),
+        completedAtEpochMillis = completedAt?.toEpochMillis(),
+        initialUrge = initialUrge,
+        finalUrge = finalUrge,
+        triggerKey = triggerKey,
+        actionKeys = actionKeys,
+        outcome = outcome,
+        clientUpdatedAtEpochMillis = clientUpdatedAt.toEpochMillis(),
+    )
+}
 
 private fun Long.toIsoInstant(): String = Instant.ofEpochMilli(this).toString()
+
+private fun String.toEpochMillis(): Long = Instant.parse(this).toEpochMilli()
