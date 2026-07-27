@@ -5,6 +5,7 @@ import com.deaddict.database.DeAddictDatabase
 import com.deaddict.database.entity.ActiveProgramEntity
 import com.deaddict.database.entity.RescueOutcome
 import com.deaddict.database.entity.RescueSessionEntity
+import com.deaddict.database.entity.SyncAggregateType
 import com.deaddict.database.entity.SyncState
 import com.deaddict.database.entity.TrackingEventEntity
 import com.deaddict.database.entity.TrackingEventKind
@@ -27,8 +28,21 @@ class RoomRestoreStore(
             var inserted = 0
             var updated = 0
             var skipped = 0
+            val programTombstones = database.syncOutboxDao()
+                .deleteTombstoneIds(SyncAggregateType.ACTIVE_PROGRAM.name)
+                .toHashSet()
+            val trackingTombstones = database.syncOutboxDao()
+                .deleteTombstoneIds(SyncAggregateType.TRACKING_EVENT.name)
+                .toHashSet()
+            val rescueTombstones = database.syncOutboxDao()
+                .deleteTombstoneIds(SyncAggregateType.RESCUE_SESSION.name)
+                .toHashSet()
 
             for (remote in snapshot.programs) {
+                if (remote.id in programTombstones) {
+                    skipped += 1
+                    continue
+                }
                 val byId = database.programDao().byId(remote.id)
                 val byProgram = database.programDao().byProgramId(remote.programId)
                 val localConflict = byId ?: byProgram
@@ -49,6 +63,10 @@ class RoomRestoreStore(
             }
 
             for (remote in snapshot.trackingEvents) {
+                if (remote.id in trackingTombstones) {
+                    skipped += 1
+                    continue
+                }
                 val existing = database.trackingDao().byId(remote.id)
                 if (existing != null && existing.syncState != SyncState.SYNCED) {
                     skipped += 1
@@ -84,6 +102,10 @@ class RoomRestoreStore(
             }
 
             for (remote in snapshot.rescueSessions) {
+                if (remote.id in rescueTombstones) {
+                    skipped += 1
+                    continue
+                }
                 val existing = database.rescueDao().byId(remote.id)
                 if (existing != null && existing.syncState != SyncState.SYNCED) {
                     skipped += 1
