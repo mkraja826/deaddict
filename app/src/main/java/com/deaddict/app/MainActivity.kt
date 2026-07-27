@@ -1,31 +1,34 @@
 package com.deaddict.app
 
-import android.os.Bundle
-import android.content.Intent
-import android.provider.Settings
 import android.Manifest
+import android.content.Intent
 import android.os.Build
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.ComponentActivity
+import android.os.Bundle
+import android.provider.Settings
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.deaddict.app.ui.AccountDeletionAction
+import com.deaddict.app.ui.AppTab
 import com.deaddict.app.ui.AppViewModel
 import com.deaddict.app.ui.DeAddictRoot
 import com.deaddict.app.ui.theme.DeAddictTheme
 import dagger.hilt.android.AndroidEntryPoint
-import androidx.fragment.app.FragmentActivity
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import android.view.WindowManager
 
 @AndroidEntryPoint
 class MainActivity : FragmentActivity() {
@@ -44,6 +47,7 @@ class MainActivity : FragmentActivity() {
         setContent {
             val state by viewModel.state.collectAsStateWithLifecycle()
             val lockRequired = state.privacyPreferences.biometricLockEnabled
+            val isAppUnlocked = !lockRequired || biometricAuthenticated
             SideEffect {
                 if (state.privacyPreferences.screenProtectionEnabled) {
                     window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -57,53 +61,64 @@ class MainActivity : FragmentActivity() {
                 }
             }
             DeAddictTheme {
-                DeAddictRoot(
-                    state = state,
-                    isAppUnlocked = !lockRequired || biometricAuthenticated,
-                    onTabSelected = viewModel::selectTab,
-                    onProgramSelected = viewModel::activateProgram,
-                    onTrackingRecorded = viewModel::recordTracking,
-                    onRequestUsageAccess = {
-                        startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                    },
-                    onBeginRescue = viewModel::beginRescue,
-                    onRescueTick = viewModel::tickRescuePause,
-                    onRescueContinue = viewModel::continueRescue,
-                    onRescueInitialUrge = viewModel::setRescueInitialUrge,
-                    onRescueTrigger = viewModel::chooseRescueTrigger,
-                    onRescueAction = viewModel::chooseRescueAction,
-                    onRescueFinalUrge = viewModel::setRescueFinalUrge,
-                    onRescueComplete = viewModel::completeRescue,
-                    onRescueReset = viewModel::resetRescue,
-                    onEnableDailyNotifications = {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        } else {
-                            viewModel.setDailyNotificationsEnabled(true)
-                        }
-                    },
-                    onDisableDailyNotifications = {
-                        viewModel.setDailyNotificationsEnabled(false)
-                    },
-                    onEnableBiometricLock = {
-                        authenticate {
-                            biometricAuthenticated = true
-                            viewModel.setBiometricLock(true)
-                        }
-                    },
-                    onDisableBiometricLock = {
-                        viewModel.setBiometricLock(false)
-                        biometricAuthenticated = false
-                    },
-                    onScreenProtectionChanged = viewModel::setScreenProtection,
-                    onAnalyticsChanged = viewModel::setAnalyticsEnabled,
-                    onUsageMonitoringChanged = viewModel::setUsageMonitoringEnabled,
-                    onDeleteLocalData = viewModel::deleteLocalRecoveryData,
-                    onPurchasePlus = { offerToken ->
-                        viewModel.purchasePlus(this, offerToken)
-                    },
-                    onRestorePurchases = viewModel::refreshBilling,
-                )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    DeAddictRoot(
+                        state = state,
+                        isAppUnlocked = isAppUnlocked,
+                        onTabSelected = viewModel::selectTab,
+                        onProgramSelected = viewModel::activateProgram,
+                        onTrackingRecorded = viewModel::recordTracking,
+                        onRequestUsageAccess = {
+                            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                        },
+                        onBeginRescue = viewModel::beginRescue,
+                        onRescueTick = viewModel::tickRescuePause,
+                        onRescueContinue = viewModel::continueRescue,
+                        onRescueInitialUrge = viewModel::setRescueInitialUrge,
+                        onRescueTrigger = viewModel::chooseRescueTrigger,
+                        onRescueAction = viewModel::chooseRescueAction,
+                        onRescueFinalUrge = viewModel::setRescueFinalUrge,
+                        onRescueComplete = viewModel::completeRescue,
+                        onRescueReset = viewModel::resetRescue,
+                        onEnableDailyNotifications = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                viewModel.setDailyNotificationsEnabled(true)
+                            }
+                        },
+                        onDisableDailyNotifications = {
+                            viewModel.setDailyNotificationsEnabled(false)
+                        },
+                        onEnableBiometricLock = {
+                            authenticate {
+                                biometricAuthenticated = true
+                                viewModel.setBiometricLock(true)
+                            }
+                        },
+                        onDisableBiometricLock = {
+                            viewModel.setBiometricLock(false)
+                            biometricAuthenticated = false
+                        },
+                        onScreenProtectionChanged = viewModel::setScreenProtection,
+                        onAnalyticsChanged = viewModel::setAnalyticsEnabled,
+                        onUsageMonitoringChanged = viewModel::setUsageMonitoringEnabled,
+                        onDeleteLocalData = viewModel::deleteLocalRecoveryData,
+                        onPurchasePlus = { offerToken ->
+                            viewModel.purchasePlus(this, offerToken)
+                        },
+                        onRestorePurchases = viewModel::refreshBilling,
+                    )
+                    AccountDeletionAction(
+                        visible = isAppUnlocked &&
+                            !state.isLoading &&
+                            !state.requiresOnboarding &&
+                            state.selectedTab == AppTab.PROFILE &&
+                            state.accountDeletionAvailable,
+                        inProgress = state.accountDeletionInProgress,
+                        onConfirm = viewModel::deleteAccount,
+                    )
+                }
             }
         }
     }
