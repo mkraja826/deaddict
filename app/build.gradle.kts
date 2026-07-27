@@ -65,6 +65,7 @@ dependencies {
     implementation(project(":core:programs"))
     implementation(project(":core:database"))
     implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
     implementation(platform(libs.supabase.bom))
     implementation(libs.supabase.auth)
     implementation(libs.supabase.postgrest)
