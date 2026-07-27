@@ -44,4 +44,10 @@ interface TrackingDao {
 
     @Query("UPDATE tracking_events SET syncState = 'SYNCED' WHERE id = :id")
     suspend fun markSynced(id: String): Int
+
+    @Query("DELETE FROM tracking_events WHERE id = :id")
+    suspend fun deleteById(id: String): Int
+
+    @Query("DELETE FROM tracking_events")
+    suspend fun deleteAll(): Int
 }
