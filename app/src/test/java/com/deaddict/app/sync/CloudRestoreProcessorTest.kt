@@ -2,6 +2,7 @@ package com.deaddict.app.sync
 
 import com.deaddict.database.entity.ActiveProgramEntity
 import com.deaddict.database.entity.RescueSessionEntity
+import com.deaddict.database.entity.SyncAggregateType
 import com.deaddict.database.entity.TrackingEventEntity
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -75,6 +76,12 @@ private class RestoreRemoteGateway(
     override suspend fun upsertTrackingEvent(userId: String, event: TrackingEventEntity) = Unit
 
     override suspend fun upsertRescueSession(userId: String, session: RescueSessionEntity) = Unit
+
+    override suspend fun deleteRecord(
+        userId: String,
+        aggregateType: SyncAggregateType,
+        aggregateId: String,
+    ) = Unit
 
     override suspend fun downloadSnapshot(): CloudSnapshot {
         downloadCount += 1
