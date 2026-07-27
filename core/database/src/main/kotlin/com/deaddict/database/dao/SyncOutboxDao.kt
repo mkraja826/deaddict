@@ -37,6 +37,21 @@ interface SyncOutboxDao {
 
     @Query(
         """
+        UPDATE sync_outbox
+        SET state = 'COMPLETED', lastErrorCode = 'SUPERSEDED_BY_DELETE'
+        WHERE aggregateType = :aggregateType
+          AND aggregateId = :aggregateId
+          AND operation = 'UPSERT'
+          AND state IN ('PENDING', 'IN_FLIGHT')
+        """,
+    )
+    suspend fun supersedePendingUpsert(aggregateType: String, aggregateId: String): Int
+
+    @Query("DELETE FROM sync_outbox")
+    suspend fun deleteAll(): Int
+
+    @Query(
+        """
         UPDATE sync_outbox SET
           state = CASE WHEN :deadLetter THEN 'DEAD_LETTER' ELSE 'PENDING' END,
           attemptCount = attemptCount + 1,
