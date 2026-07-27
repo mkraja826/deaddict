@@ -21,6 +21,9 @@ interface SyncOutboxDao {
     )
     suspend fun nextBatch(now: Long, limit: Int): List<SyncOutboxEntity>
 
+    @Query("UPDATE sync_outbox SET state = 'PENDING' WHERE state = 'IN_FLIGHT'")
+    suspend fun resetInterruptedClaims(): Int
+
     @Query(
         """
         UPDATE sync_outbox SET state = 'IN_FLIGHT'
@@ -44,4 +47,3 @@ interface SyncOutboxDao {
     )
     suspend fun retry(id: String, nextAttempt: Long, errorCode: String, deadLetter: Boolean): Int
 }
-
