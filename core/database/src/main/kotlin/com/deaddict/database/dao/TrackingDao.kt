@@ -29,9 +29,10 @@ interface TrackingDao {
         SELECT * FROM tracking_events
         WHERE programId = :programId
         ORDER BY occurredAtEpochMillis DESC
+        LIMIT :limit
         """,
     )
-    fun observeForProgram(programId: String): Flow<List<TrackingEventEntity>>
+    fun observeForProgram(programId: String, limit: Int): Flow<List<TrackingEventEntity>>
 
     @Query(
         """
