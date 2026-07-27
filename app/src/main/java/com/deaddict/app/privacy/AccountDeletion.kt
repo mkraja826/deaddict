@@ -30,7 +30,8 @@ class SupabaseAccountDeletionGateway @Inject constructor(
 ) : AccountDeletionGateway {
     private val client: SupabaseClient? = provider.client
 
-    override val available: Boolean = client != null
+    override val available: Boolean
+        get() = client?.auth?.currentUserOrNull() != null
 
     override suspend fun deleteRemoteAccount() {
         val supabase = checkNotNull(client) { "Supabase is not configured" }
