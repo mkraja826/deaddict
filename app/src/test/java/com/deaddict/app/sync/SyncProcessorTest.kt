@@ -128,6 +128,9 @@ private class FakeRemoteSyncGateway(
     }
 
     override suspend fun upsertRescueSession(userId: String, session: RescueSessionEntity) = Unit
+
+    override suspend fun downloadSnapshot(): CloudSnapshot =
+        CloudSnapshot(emptyList(), emptyList(), emptyList())
 }
 
 private fun trackingItem() = SyncOutboxEntity(
