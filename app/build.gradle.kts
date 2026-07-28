@@ -14,6 +14,17 @@ val deaddictLocalProperties = Properties().apply {
     if (file.exists()) file.inputStream().use(::load)
 }
 
+val releaseStoreFile = System.getenv("DEADDICT_KEYSTORE_PATH")
+val releaseStorePassword = System.getenv("DEADDICT_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("DEADDICT_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("DEADDICT_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.deaddict.app"
     compileSdk = 36
@@ -36,6 +47,17 @@ android {
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"${googleServerClientId.get()}\"")
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseStoreFile))
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -53,6 +75,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
