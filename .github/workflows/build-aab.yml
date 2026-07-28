@@ -50,11 +50,36 @@ jobs:
       - name: Run Android lint
         run: ./gradlew lint --no-build-cache --stacktrace
 
+      - name: Validate release signing secrets
+        if: github.event_name != 'pull_request'
+        env:
+          DEADDICT_KEYSTORE_BASE64: ${{ secrets.DEADDICT_KEYSTORE_BASE64 }}
+          DEADDICT_KEYSTORE_PASSWORD: ${{ secrets.DEADDICT_KEYSTORE_PASSWORD }}
+          DEADDICT_KEY_ALIAS: ${{ secrets.DEADDICT_KEY_ALIAS }}
+          DEADDICT_KEY_PASSWORD: ${{ secrets.DEADDICT_KEY_PASSWORD }}
+        run: |
+          test -n "$DEADDICT_KEYSTORE_BASE64"
+          test -n "$DEADDICT_KEYSTORE_PASSWORD"
+          test -n "$DEADDICT_KEY_ALIAS"
+          test -n "$DEADDICT_KEY_PASSWORD"
+
+      - name: Restore release keystore
+        if: github.event_name != 'pull_request'
+        env:
+          DEADDICT_KEYSTORE_BASE64: ${{ secrets.DEADDICT_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$DEADDICT_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/deaddict-release.jks"
+          test -s "$RUNNER_TEMP/deaddict-release.jks"
+
       - name: Build release AAB
         env:
           DEADDICT_SUPABASE_URL: ${{ secrets.DEADDICT_SUPABASE_URL }}
           DEADDICT_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.DEADDICT_SUPABASE_PUBLISHABLE_KEY }}
           DEADDICT_GOOGLE_SERVER_CLIENT_ID: ${{ secrets.DEADDICT_GOOGLE_SERVER_CLIENT_ID }}
+          DEADDICT_KEYSTORE_PATH: ${{ github.event_name != 'pull_request' && format('{0}/deaddict-release.jks', runner.temp) || '' }}
+          DEADDICT_KEYSTORE_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.DEADDICT_KEYSTORE_PASSWORD || '' }}
+          DEADDICT_KEY_ALIAS: ${{ github.event_name != 'pull_request' && secrets.DEADDICT_KEY_ALIAS || '' }}
+          DEADDICT_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.DEADDICT_KEY_PASSWORD || '' }}
         run: |
           ./gradlew :app:bundleRelease \
             -PDEADDICT_SUPABASE_URL="$DEADDICT_SUPABASE_URL" \
@@ -62,6 +87,10 @@ jobs:
             -PDEADDICT_GOOGLE_SERVER_CLIENT_ID="$DEADDICT_GOOGLE_SERVER_CLIENT_ID" \
             --no-build-cache \
             --stacktrace
+
+      - name: Verify signed release AAB
+        if: github.event_name != 'pull_request'
+        run: jarsigner -verify -verbose -certs app/build/outputs/bundle/release/*.aab
 
       - name: Upload release AAB
         uses: actions/upload-artifact@v4
