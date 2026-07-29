@@ -1,6 +1,8 @@
 package com.deaddict.app.sync
 
 import com.deaddict.database.entity.ActiveProgramEntity
+import com.deaddict.database.entity.RecoveryGoalVersionEntity
+import com.deaddict.database.entity.RecoveryTrackEntity
 import com.deaddict.database.entity.RescueSessionEntity
 import com.deaddict.database.entity.SyncAggregateType
 import com.deaddict.database.entity.TrackingEventEntity
@@ -58,6 +60,10 @@ interface RemoteSyncGateway {
 
     suspend fun upsertProgram(userId: String, program: ActiveProgramEntity)
 
+    suspend fun upsertRecoveryTrack(userId: String, track: RecoveryTrackEntity)
+
+    suspend fun upsertRecoveryGoal(userId: String, goal: RecoveryGoalVersionEntity)
+
     suspend fun upsertTrackingEvent(userId: String, event: TrackingEventEntity)
 
     suspend fun upsertRescueSession(userId: String, session: RescueSessionEntity)
@@ -87,6 +93,44 @@ class SupabaseRemoteSyncGateway(
                     program.activatedAtEpochMillis,
                     program.archivedAtEpochMillis ?: program.activatedAtEpochMillis,
                 ).toIsoInstant(),
+            ),
+        )
+    }
+
+    override suspend fun upsertRecoveryTrack(userId: String, track: RecoveryTrackEntity) {
+        requireClient().from("recovery_tracks").upsert(
+            CloudRecoveryTrack(
+                id = track.id,
+                userId = userId,
+                programId = track.programId,
+                displayAlias = track.displayAlias,
+                role = track.role.name,
+                status = track.status.name,
+                startedAt = track.startedAtEpochMillis.toIsoInstant(),
+                pausedAt = track.pausedAtEpochMillis?.toIsoInstant(),
+                maintenanceAt = track.maintenanceAtEpochMillis?.toIsoInstant(),
+                archivedAt = track.archivedAtEpochMillis?.toIsoInstant(),
+                clientUpdatedAt = track.updatedAtEpochMillis.toIsoInstant(),
+                revision = track.revision,
+            ),
+        )
+    }
+
+    override suspend fun upsertRecoveryGoal(userId: String, goal: RecoveryGoalVersionEntity) {
+        requireClient().from("recovery_goal_versions").upsert(
+            CloudRecoveryGoal(
+                id = goal.id,
+                userId = userId,
+                recoveryTrackId = goal.recoveryTrackId,
+                goalType = goal.goalType.name,
+                targetValue = goal.targetValue,
+                unitKey = goal.unitKey,
+                periodType = goal.periodType?.name,
+                title = goal.title,
+                effectiveFrom = goal.effectiveFromEpochMillis.toIsoInstant(),
+                effectiveUntil = goal.effectiveUntilEpochMillis?.toIsoInstant(),
+                clientUpdatedAt = goal.updatedAtEpochMillis.toIsoInstant(),
+                revision = goal.revision,
             ),
         )
     }
@@ -137,6 +181,8 @@ class SupabaseRemoteSyncGateway(
     ) {
         val table = when (aggregateType) {
             SyncAggregateType.ACTIVE_PROGRAM -> "user_programs"
+            SyncAggregateType.RECOVERY_TRACK -> "recovery_tracks"
+            SyncAggregateType.RECOVERY_GOAL -> "recovery_goal_versions"
             SyncAggregateType.TRACKING_EVENT -> "tracking_events"
             SyncAggregateType.RESCUE_SESSION -> "rescue_sessions"
         }
@@ -187,6 +233,38 @@ private data class CloudProgram(
         clientUpdatedAtEpochMillis = clientUpdatedAt.toEpochMillis(),
     )
 }
+
+@Serializable
+private data class CloudRecoveryTrack(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("program_id") val programId: String,
+    @SerialName("display_alias") val displayAlias: String?,
+    val role: String,
+    val status: String,
+    @SerialName("started_at") val startedAt: String,
+    @SerialName("paused_at") val pausedAt: String?,
+    @SerialName("maintenance_at") val maintenanceAt: String?,
+    @SerialName("archived_at") val archivedAt: String?,
+    @SerialName("client_updated_at") val clientUpdatedAt: String,
+    val revision: Long,
+)
+
+@Serializable
+private data class CloudRecoveryGoal(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("recovery_track_id") val recoveryTrackId: String,
+    @SerialName("goal_type") val goalType: String,
+    @SerialName("target_value") val targetValue: Double?,
+    @SerialName("unit_key") val unitKey: String?,
+    @SerialName("period_type") val periodType: String?,
+    val title: String?,
+    @SerialName("effective_from") val effectiveFrom: String,
+    @SerialName("effective_until") val effectiveUntil: String?,
+    @SerialName("client_updated_at") val clientUpdatedAt: String,
+    val revision: Long,
+)
 
 @Serializable
 private data class CloudTrackingEvent(
