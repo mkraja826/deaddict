@@ -114,12 +114,26 @@ class MainActivity : FragmentActivity() {
                             viewModel.purchasePlus(this@MainActivity, offerToken)
                         },
                         onRestorePurchases = viewModel::refreshBilling,
+                        onOnboardingNext = viewModel::onboardingNext,
+                        onOnboardingBack = viewModel::onboardingBack,
+                        onOnboardingPrivacyChanged = viewModel::setOnboardingPrivacyAccepted,
+                        onOnboardingUsageModeChanged = viewModel::setOnboardingUsageMode,
+                        onOnboardingMotivationChanged = viewModel::setOnboardingMotivation,
+                        onOnboardingPrimaryProgramChanged = viewModel::setOnboardingPrimaryProgram,
+                        onOnboardingSafetyChanged = viewModel::acknowledgeOnboardingSafety,
+                        onOnboardingGoalChanged = viewModel::setOnboardingGoal,
+                        onOnboardingGoalDetailsChanged = viewModel::setOnboardingGoalDetails,
+                        onOnboardingBaselineChanged = viewModel::setOnboardingBaseline,
+                        onOnboardingTriggerToggled = viewModel::toggleOnboardingTrigger,
+                        onOnboardingRookToneChanged = viewModel::setOnboardingRookTone,
+                        onOnboardingNotificationsChanged = viewModel::setOnboardingNotifications,
+                        onOnboardingComplete = viewModel::completeOnboarding,
                     )
                     AccountDeletionAction(
                         visible = isAppUnlocked &&
                             !state.isLoading &&
                             !state.requiresOnboarding &&
-                            state.selectedTab == AppTab.PROFILE &&
+                            state.selectedTab == AppTab.YOU &&
                             state.accountDeletionAvailable,
                         inProgress = state.accountDeletionInProgress,
                         onConfirm = viewModel::deleteAccount,
