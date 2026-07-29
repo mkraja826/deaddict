@@ -10,6 +10,7 @@ import com.deaddict.app.insights.LocalInsightsRepository
 import com.deaddict.app.notifications.NotificationPreferenceStore
 import com.deaddict.app.notifications.NotificationScheduler
 import com.deaddict.app.privacy.PrivacyPreferenceStore
+import com.deaddict.app.session.OwnerSessionStore
 import com.deaddict.app.sync.RemoteSyncGateway
 import com.deaddict.app.sync.SupabaseRemoteSyncGateway
 import com.deaddict.app.sync.SyncScheduler
@@ -48,12 +49,25 @@ object PersistenceModule {
 
     @Provides
     @Singleton
+    fun ownerSessionStore(
+        @ApplicationContext context: Context,
+    ): OwnerSessionStore = OwnerSessionStore(context)
+
+    @Provides
+    @Singleton
     fun authGateway(
         clientProvider: SupabaseClientProvider,
         syncScheduler: SyncScheduler,
+        ownerSessionStore: OwnerSessionStore,
     ): AuthGateway = SupabaseAuthGateway(
         client = clientProvider.client,
-        onAuthenticated = syncScheduler::scheduleNow,
+        onAuthenticated = { user ->
+            ownerSessionStore.establishAuthenticated(user.id)
+            syncScheduler.scheduleNow()
+        },
+        onSignedOut = {
+            ownerSessionStore.establishGuest()
+        },
     )
 
     @Provides
