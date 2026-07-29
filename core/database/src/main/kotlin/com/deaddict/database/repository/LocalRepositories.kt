@@ -32,6 +32,15 @@ enum class SyncPolicy {
     CLOUD_ELIGIBLE,
 }
 
+data class RecoveryOwnerSelection(
+    val ownerKey: OwnerKey,
+    val recoveryTrackId: RecoveryTrackId,
+)
+
+fun interface RecoveryOwnerContext {
+    suspend fun current(): RecoveryOwnerSelection?
+}
+
 data class NewTrackingEvent(
     val programId: ProgramId,
     val kind: TrackingEventKind,
@@ -114,6 +123,7 @@ class LocalProgramRepository(
 
 class LocalTrackingRepository(
     private val database: DeAddictDatabase,
+    private val ownerContext: RecoveryOwnerContext? = null,
     private val clock: EpochClock = EpochClock(System::currentTimeMillis),
     private val ids: IdGenerator = IdGenerator { UUID.randomUUID().toString() },
 ) {
@@ -138,11 +148,11 @@ class LocalTrackingRepository(
         val id = ids.next()
         val now = clock.nowMillis()
         val state = syncPolicy.toInitialSyncState()
+        val selected = input.explicitSelection() ?: ownerContext?.current()
 
         database.withTransaction {
             val ownership = database.resolveRecoveryTrackOwnership(
-                ownerKey = input.ownerKey,
-                recoveryTrackId = input.recoveryTrackId,
+                selection = selected,
                 programId = input.programId,
             )
             val entity = TrackingEventEntity(
@@ -198,6 +208,7 @@ class LocalTrackingRepository(
 
 class LocalRescueRepository(
     private val database: DeAddictDatabase,
+    private val ownerContext: RecoveryOwnerContext? = null,
     private val clock: EpochClock = EpochClock(System::currentTimeMillis),
     private val ids: IdGenerator = IdGenerator { UUID.randomUUID().toString() },
 ) {
@@ -217,10 +228,10 @@ class LocalRescueRepository(
     suspend fun record(input: NewRescueSession, syncPolicy: SyncPolicy): String {
         val id = ids.next()
         val now = clock.nowMillis()
+        val selected = input.explicitSelection() ?: ownerContext?.current()
         database.withTransaction {
             val ownership = database.resolveRecoveryTrackOwnership(
-                ownerKey = input.ownerKey,
-                recoveryTrackId = input.recoveryTrackId,
+                selection = selected,
                 programId = input.programId,
             )
             val entity = RescueSessionEntity(
@@ -267,30 +278,36 @@ class LocalRescueRepository(
     }
 }
 
+private fun NewTrackingEvent.explicitSelection(): RecoveryOwnerSelection? =
+    ownerKey?.let { owner -> RecoveryOwnerSelection(owner, checkNotNull(recoveryTrackId)) }
+
+private fun NewRescueSession.explicitSelection(): RecoveryOwnerSelection? =
+    ownerKey?.let { owner -> RecoveryOwnerSelection(owner, checkNotNull(recoveryTrackId)) }
+
 private data class RecoveryTrackOwnership(
     val ownerKey: String,
     val recoveryTrackId: String?,
 )
 
 private suspend fun DeAddictDatabase.resolveRecoveryTrackOwnership(
-    ownerKey: OwnerKey?,
-    recoveryTrackId: RecoveryTrackId?,
+    selection: RecoveryOwnerSelection?,
     programId: ProgramId,
 ): RecoveryTrackOwnership {
-    if (ownerKey == null && recoveryTrackId == null) {
-        return RecoveryTrackOwnership(LEGACY_OWNER_KEY, null)
-    }
-    val owner = checkNotNull(ownerKey)
-    val trackId = checkNotNull(recoveryTrackId)
-    val track = checkNotNull(recoveryTrackDao().byId(trackId.value)) {
+    if (selection == null) return RecoveryTrackOwnership(LEGACY_OWNER_KEY, null)
+
+    val track = checkNotNull(recoveryTrackDao().byId(selection.recoveryTrackId.value)) {
         "Recovery Track does not exist"
     }
-    require(track.ownerKey == owner.value) { "Recovery Track belongs to another owner" }
-    require(track.programId == programId.value) { "Recovery Track program does not match the event" }
+    require(track.ownerKey == selection.ownerKey.value) {
+        "Recovery Track belongs to another owner"
+    }
+    require(track.programId == programId.value) {
+        "Recovery Track program does not match the event"
+    }
     require(track.status in setOf(RecoveryTrackStatus.ACTIVE, RecoveryTrackStatus.MAINTENANCE)) {
         "Only active or maintenance Recovery Tracks can receive new records"
     }
-    return RecoveryTrackOwnership(owner.value, track.id)
+    return RecoveryTrackOwnership(selection.ownerKey.value, track.id)
 }
 
 private suspend fun DeAddictDatabase.enqueueDelete(
