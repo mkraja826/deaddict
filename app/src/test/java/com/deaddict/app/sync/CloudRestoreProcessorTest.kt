@@ -1,6 +1,8 @@
 package com.deaddict.app.sync
 
 import com.deaddict.database.entity.ActiveProgramEntity
+import com.deaddict.database.entity.RecoveryGoalVersionEntity
+import com.deaddict.database.entity.RecoveryTrackEntity
 import com.deaddict.database.entity.RescueSessionEntity
 import com.deaddict.database.entity.SyncAggregateType
 import com.deaddict.database.entity.TrackingEventEntity
@@ -72,6 +74,10 @@ private class RestoreRemoteGateway(
     override suspend fun currentUserId(): String? = userId
 
     override suspend fun upsertProgram(userId: String, program: ActiveProgramEntity) = Unit
+
+    override suspend fun upsertRecoveryTrack(userId: String, track: RecoveryTrackEntity) = Unit
+
+    override suspend fun upsertRecoveryGoal(userId: String, goal: RecoveryGoalVersionEntity) = Unit
 
     override suspend fun upsertTrackingEvent(userId: String, event: TrackingEventEntity) = Unit
 
