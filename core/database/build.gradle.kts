@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
 }
 
 android {
@@ -13,7 +14,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
         ksp {
-            arg("room.schemaLocation", "$projectDir/schemas")
             arg("room.incremental", "true")
             arg("room.generateKotlin", "true")
         }
@@ -33,7 +33,12 @@ android {
     }
 }
 
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
 dependencies {
+    implementation(project(":core:model"))
     implementation(project(":core:programs"))
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
