@@ -1,6 +1,6 @@
 package com.deaddict.model
 
-import com.deaddict.programs.ProgramId
+import com.deaddict.programs.DefaultProgramRegistry
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,6 +10,7 @@ import org.junit.Test
 
 class RecoveryTrackTest {
     private val createdAt = Instant.parse("2026-07-29T12:00:00Z")
+    private val programId = DefaultProgramRegistry().all().first().id
 
     @Test
     fun `new active primary track is valid`() {
@@ -82,7 +83,7 @@ class RecoveryTrackTest {
     private fun activeTrack(): RecoveryTrack = RecoveryTrack(
         id = RecoveryTrackId.parse("7ebdbd0b-4676-45f1-82cd-e632b3ec6092"),
         ownerKey = OwnerKey.guest("f414ce7d-4d6e-463d-b48a-41835e03812b"),
-        programId = ProgramId("smoking"),
+        programId = programId,
         displayAlias = null,
         role = RecoveryTrackRole.PRIMARY,
         status = RecoveryTrackStatus.ACTIVE,
