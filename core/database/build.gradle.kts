@@ -38,7 +38,7 @@ room {
 }
 
 dependencies {
-    implementation(project(":core:model"))
+    api(project(":core:model"))
     implementation(project(":core:programs"))
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
