@@ -15,7 +15,9 @@ enum class RescueStep {
 
 data class RescueFlowState(
     val step: RescueStep = RescueStep.READY,
+    val recoveryTrackId: String? = null,
     val program: ProgramDefinition? = null,
+    val startedAtEpochMillis: Long? = null,
     val secondsRemaining: Int = PAUSE_SECONDS,
     val motivation: String = "I want more choice in what happens next.",
     val initialUrge: Int = 3,
@@ -24,22 +26,39 @@ data class RescueFlowState(
     val replacementActions: List<String> = emptyList(),
     val selectedAction: String? = null,
 ) {
+    val isOwned: Boolean
+        get() = recoveryTrackId != null && program != null && startedAtEpochMillis != null
+
     companion object {
         const val PAUSE_SECONDS = 60
     }
 }
 
 class RescueFlow {
-    fun begin(program: ProgramDefinition): RescueFlowState =
-        RescueFlowState(step = RescueStep.PAUSE, program = program)
+    fun begin(
+        recoveryTrackId: String,
+        program: ProgramDefinition,
+        startedAtEpochMillis: Long,
+    ): RescueFlowState {
+        require(recoveryTrackId.isNotBlank()) { "Recovery Track ID is required" }
+        require(startedAtEpochMillis > 0) { "Rescue start time must be positive" }
+        return RescueFlowState(
+            step = RescueStep.PAUSE,
+            recoveryTrackId = recoveryTrackId,
+            program = program,
+            startedAtEpochMillis = startedAtEpochMillis,
+        )
+    }
 
     fun tick(state: RescueFlowState): RescueFlowState {
         require(state.step == RescueStep.PAUSE)
+        require(state.isOwned) { "Rescue flow must remain attached to a Recovery Track" }
         return state.copy(secondsRemaining = (state.secondsRemaining - 1).coerceAtLeast(0))
     }
 
     fun continueAfterPause(state: RescueFlowState): RescueFlowState {
         require(state.step == RescueStep.PAUSE && state.secondsRemaining == 0)
+        require(state.isOwned)
         return state.copy(step = RescueStep.MOTIVATION)
     }
 
@@ -83,6 +102,7 @@ class RescueFlow {
 
     fun complete(state: RescueFlowState): RescueFlowState {
         require(state.step == RescueStep.RECHECK)
+        require(state.isOwned) { "Completed Rescue sessions require Recovery Track ownership" }
         return state.copy(step = RescueStep.COMPLETE)
     }
 
@@ -100,4 +120,3 @@ class RescueFlow {
         val VALID_TRIGGERS = setOf("stress", "boredom", "social", "routine", "access")
     }
 }
-
