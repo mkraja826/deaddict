@@ -16,6 +16,8 @@ import com.deaddict.app.sync.SyncScheduler
 import com.deaddict.app.usage.DigitalUsageRepository
 import com.deaddict.database.DeAddictDatabase
 import com.deaddict.database.MIGRATION_1_2
+import com.deaddict.database.MIGRATION_2_3
+import com.deaddict.database.RECOVERY_TRACK_DATABASE_CALLBACK
 import com.deaddict.database.repository.LocalProgramRepository
 import com.deaddict.database.repository.LocalRescueRepository
 import com.deaddict.database.repository.LocalTrackingRepository
@@ -38,7 +40,10 @@ object PersistenceModule {
             context,
             DeAddictDatabase::class.java,
             "deaddict.db",
-        ).addMigrations(MIGRATION_1_2).build()
+        )
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addCallback(RECOVERY_TRACK_DATABASE_CALLBACK)
+            .build()
 
     @Provides
     @Singleton
