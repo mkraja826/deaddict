@@ -4,7 +4,9 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.deaddict.database.entity.RescueSessionEntity
+import com.deaddict.database.entity.SyncState
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -12,7 +14,7 @@ interface RescueDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(session: RescueSessionEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertFromCloud(session: RescueSessionEntity)
 
     @Query("SELECT * FROM rescue_sessions WHERE id = :id LIMIT 1")
@@ -39,9 +41,51 @@ interface RescueDao {
     @Query(
         """
         SELECT * FROM rescue_sessions
+        WHERE recoveryTrackId = :recoveryTrackId
+        ORDER BY startedAtEpochMillis DESC
+        LIMIT :limit
+        """,
+    )
+    fun observeForTrack(
+        recoveryTrackId: String,
+        limit: Int,
+    ): Flow<List<RescueSessionEntity>>
+
+    @Query(
+        """
+        SELECT * FROM rescue_sessions
+        WHERE recoveryTrackId = :recoveryTrackId AND startedAtEpochMillis >= :since
+        ORDER BY startedAtEpochMillis
+        """,
+    )
+    suspend fun sinceTrack(
+        recoveryTrackId: String,
+        since: Long,
+    ): List<RescueSessionEntity>
+
+    @Query(
+        """
+        SELECT * FROM rescue_sessions
         WHERE programId = :programId AND startedAtEpochMillis >= :since
         ORDER BY startedAtEpochMillis
         """,
     )
     suspend fun since(programId: String, since: Long): List<RescueSessionEntity>
+
+    @Query(
+        """
+        UPDATE rescue_sessions
+        SET ownerKey = :ownerKey,
+            syncState = :syncState
+        WHERE recoveryTrackId = :recoveryTrackId
+        """,
+    )
+    suspend fun reassignOwner(
+        recoveryTrackId: String,
+        ownerKey: String,
+        syncState: SyncState,
+    ): Int
+
+    @Query("SELECT * FROM rescue_sessions WHERE recoveryTrackId = :recoveryTrackId")
+    suspend fun allForTrack(recoveryTrackId: String): List<RescueSessionEntity>
 }
