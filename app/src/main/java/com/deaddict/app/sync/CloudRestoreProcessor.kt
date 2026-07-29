@@ -9,6 +9,7 @@ import com.deaddict.database.entity.SyncAggregateType
 import com.deaddict.database.entity.SyncState
 import com.deaddict.database.entity.TrackingEventEntity
 import com.deaddict.database.entity.TrackingEventKind
+import com.deaddict.model.OwnerKey
 
 interface RestoreStore {
     suspend fun apply(snapshot: CloudSnapshot): RestoreSummary
@@ -68,6 +69,16 @@ class RoomRestoreStore(
                     skipped += 1
                     continue
                 }
+                val ownerKey = try {
+                    OwnerKey.authenticated(remote.userId).value
+                } catch (_: IllegalArgumentException) {
+                    skipped += 1
+                    continue
+                }
+                if (!validTrackOwnership(remote.recoveryTrackId, ownerKey, remote.programId)) {
+                    skipped += 1
+                    continue
+                }
                 val existing = database.trackingDao().byId(remote.id)
                 if (existing != null && existing.syncState != SyncState.SYNCED) {
                     skipped += 1
@@ -82,6 +93,8 @@ class RoomRestoreStore(
                 val restored = try {
                     TrackingEventEntity(
                         id = remote.id,
+                        ownerKey = ownerKey,
+                        recoveryTrackId = remote.recoveryTrackId,
                         programId = remote.programId,
                         kind = kind,
                         quantity = remote.quantity,
@@ -107,6 +120,16 @@ class RoomRestoreStore(
                     skipped += 1
                     continue
                 }
+                val ownerKey = try {
+                    OwnerKey.authenticated(remote.userId).value
+                } catch (_: IllegalArgumentException) {
+                    skipped += 1
+                    continue
+                }
+                if (!validTrackOwnership(remote.recoveryTrackId, ownerKey, remote.programId)) {
+                    skipped += 1
+                    continue
+                }
                 val existing = database.rescueDao().byId(remote.id)
                 if (existing != null && existing.syncState != SyncState.SYNCED) {
                     skipped += 1
@@ -121,6 +144,8 @@ class RoomRestoreStore(
                 val restored = try {
                     RescueSessionEntity(
                         id = remote.id,
+                        ownerKey = ownerKey,
+                        recoveryTrackId = remote.recoveryTrackId,
                         programId = remote.programId,
                         startedAtEpochMillis = remote.startedAtEpochMillis,
                         completedAtEpochMillis = remote.completedAtEpochMillis,
@@ -141,6 +166,16 @@ class RoomRestoreStore(
 
             RestoreSummary(inserted, updated, skipped)
         }
+
+    private suspend fun validTrackOwnership(
+        recoveryTrackId: String?,
+        ownerKey: String,
+        programId: String,
+    ): Boolean {
+        if (recoveryTrackId == null) return true
+        val track = database.recoveryTrackDao().byId(recoveryTrackId) ?: return false
+        return track.ownerKey == ownerKey && track.programId == programId
+    }
 }
 
 class CloudRestoreProcessor(
