@@ -1,22 +1,25 @@
 # Known Limitations
 
-- The current milestone is an advanced local-first MVP with authenticated cloud upload, restore, durable record deletion, and account deletion; it is not yet a production release.
-- Supabase synchronization supports upserts and idempotent deletes for programs, tracking events, and Rescue sessions. Account switching, granular conflict resolution, and physical-device offline/reconnect validation remain.
-- Cloud restore protects unsynced `LOCAL_ONLY` and `PENDING` records, preserves private tracking notes, and respects durable delete tombstones. Broader multi-device conflict behavior still requires integration testing.
-- The dedicated DeAddict Supabase project, least-privilege table grants, own-row RLS policies, tracking-trigger schema, and JWT-protected `delete-account` Edge Function are deployed. Google OAuth credentials and end-to-end provider sign-in remain unverified.
-- Signed-in users receive a Profile-only account-deletion action with an explicit irreversible confirmation. The coordinator calls the server first, then clears the Auth session, Room data, privacy and notification preferences, reminders, and sync work.
-- Account deletion still requires a disposable real-account test on a release-signed device build. No destructive live test has been run against a real user account during implementation.
-- Editable recovery-plan goals remain; tracking entry types are implemented.
-- Compose UI has compiled but has not yet received the full emulator/device visual and accessibility matrix.
-- Digital usage estimates are derived from Android foreground events and may vary by device; persisted trends, warnings, and focus sessions remain.
-- Rescue regional emergency resources are not configured yet; the current escalation uses country-neutral professional and emergency guidance.
-- Daily local check-ins are implemented. Risk-period, bedtime, weekly report, near-limit, focus-completion, and FCM delivery remain.
-- Insights currently cover seven days; long-term reports, charts, comparison ranges, and export-ready report layouts remain.
-- Data export, per-program management, discreet launcher identity, and granular accountability sharing remain.
-- Billing uses the `deaddict_plus` subscription product, but Play Console base plans and secure backend purchase verification/acknowledgement are not configured. Unverified purchases never grant Plus.
-- GitHub Actions verifies JVM tests, Android lint, debug and minified release builds, reports, full Gradle logs, and APK artifacts. Broader usage-estimation accuracy still requires physical-device sampling across OEMs.
-- Hindi and Telugu currently cover primary navigation and critical safety/privacy/billing boundaries, not the complete interface. Translations still require professional review, and no market beyond India is enabled.
-- The privacy-boundary Compose test and Room migration/repository tests pass on a Pixel 7 API 35 emulator. TalkBack, large-text, reduced-motion, contrast, RTL, and wider API/device checks remain manual release gates.
-- The generated release APK is unsigned. Signing, Play App Signing, closed-track upload, tester feedback, crash/ANR monitoring, dependency review, and clinical safety review remain.
-- UsageStatsManager can estimate app-level activity only; it cannot access messages, passwords, photos, searches, screen content, or exact short-form-video activity.
-- DeAddict will not promise unbreakable blocking or provide medical treatment.
+Last updated: 2026-07-29
+
+- The current application is an advanced local-first MVP, not a production release.
+- Multi-addiction V1 uses active-program records and selected-list ordering. It does not yet provide permanent Recovery Track identities, primary/supporting persistence, pause/maintenance lifecycle, or historical restarted journeys.
+- Tracking events and Rescue sessions reference `programId`, not a permanent `recoveryTrackId`.
+- The current onboarding is primarily a program picker; it does not create a complete goal, baseline, trigger plan, privacy choice, Rook boundary, or first unified check-in.
+- Home progress is largely generic supportive copy rather than goal-aware persisted progress.
+- The Track screen is a one-track event logger, not a unified daily multi-track check-in.
+- Cross-track insights and replacement-behavior analysis are not implemented.
+- Rook has Direct, Brutal Banter, and Quiet modes with a high-risk override, but lacks feedback, repetition control, blocked templates, off-limits topics, a reviewed large catalogue, and a production-safe Direct default.
+- Supabase synchronization supports upserts and idempotent deletes for programs, tracking events, and Rescue sessions. Recovery Tracks, goals, and daily check-ins are not synchronized because those aggregates do not yet exist.
+- Cloud restore protects pending local records and private tracking notes, but broader two-device and account-switch behavior still requires integration testing.
+- Production Google OAuth and full email OTP behavior remain unverified on release-signed devices.
+- Account deletion requires a destructive disposable-account test covering remote rows, Room data, preferences, reminders, work requests, and authentication state.
+- Rescue regional emergency resources are not configured. The current flow uses country-neutral guidance.
+- Daily local reminders exist, but track-aware, risk-period, weekly, near-limit, and production FCM flows are incomplete.
+- Play Billing uses `deaddict_plus`, but the client currently has no connected backend purchase verifier. Unverified purchases never grant Plus.
+- Hindi and Telugu cover only part of the interface. Many user-facing strings remain hardcoded in English, and professional review is pending.
+- CI runs JVM tests, lint, and debug/release builds, but does not currently execute the full emulator/instrumented matrix on every pull request.
+- TalkBack, large text, reduced motion, contrast, RTL, wider API/device coverage, and OEM usage-estimate validation remain release gates.
+- Crash, ANR, sync-health, and billing-health production observability are not yet configured.
+- UsageStatsManager can estimate app-level foreground activity only. It cannot access messages, passwords, photos, searches, browsing content, screen contents, or exact short-form-video activity.
+- DeAddict will not promise unbreakable blocking, diagnosis, medical treatment, detox management, or guaranteed outcomes.
