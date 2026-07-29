@@ -47,11 +47,11 @@ jobs:
           set -o pipefail
           ./gradlew lint --stacktrace 2>&1 | tee build-logs/android-lint.log
 
-      - name: Build debug and release artifacts
+      - name: Build debug, release, and database test artifacts
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew assembleDebug assembleRelease --stacktrace 2>&1 | tee build-logs/android-build.log
+          ./gradlew assembleDebug assembleRelease :core:database:assembleAndroidTest --stacktrace 2>&1 | tee build-logs/android-build.log
 
       - name: Upload verification reports and logs
         if: always()
@@ -64,6 +64,7 @@ jobs:
             build-logs/**
             **/build/reports/**
             **/build/test-results/**
+            core/database/schemas/**
 
       - name: Upload APK artifacts
         if: success()
