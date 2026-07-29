@@ -59,7 +59,7 @@ class LocalRepositoryTest {
             syncPolicy = SyncPolicy.CLOUD_ELIGIBLE,
         )
 
-        val stored = database.trackingDao().observeForProgram("gaming").first()
+        val stored = database.trackingDao().observeForProgram("gaming", limit = 100).first()
         val queued = database.syncOutboxDao().nextBatch(2_000L, 10)
         assertEquals("must stay local", stored.single().privateNote)
         assertEquals(1, queued.size)
