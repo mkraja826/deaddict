@@ -58,12 +58,7 @@ import com.deaddict.programs.ProgramDefinition
 import com.deaddict.programs.SafetyTier
 import kotlinx.coroutines.delay
 
-/**
- * Production entry point for the Recovery Track UI.
- *
- * Every feature receives the selected RecoveryTrackUi directly. The legacy program-list root remains
- * compiled during the transition, but MainActivity no longer enters it.
- */
+/** Production entry point that passes an explicit RecoveryTrackUi to every track-sensitive screen. */
 @Composable
 fun RecoveryTrackAppRoot(
     state: AppUiState,
@@ -99,15 +94,13 @@ fun RecoveryTrackAppRoot(
     onRestorePurchases: () -> Unit,
 ) {
     when {
-        !isAppUnlocked -> ExplicitLockedScreen()
-        state.isLoading -> ExplicitLoadingScreen()
-        state.requiresOnboarding -> ExplicitProgramOnboarding(
-            programs = state.availablePrograms,
-            onSelected = onProgramSelected,
-        )
-        else -> ExplicitAppScaffold(
+        !isAppUnlocked -> LockedScreenV2()
+        state.isLoading -> LoadingScreenV2()
+        state.requiresOnboarding -> ProgramOnboardingV2(state.availablePrograms, onProgramSelected)
+        else -> AppScaffoldV2(
             state = state,
             onTabSelected = onTabSelected,
+            onProgramSelected = onProgramSelected,
             onTrackSelected = onTrackSelected,
             onMakePrimary = onMakePrimary,
             onPauseTrack = onPauseTrack,
@@ -115,6 +108,7 @@ fun RecoveryTrackAppRoot(
             onMaintenanceTrack = onMaintenanceTrack,
             onArchiveTrack = onArchiveTrack,
             onTrackingRecorded = onTrackingRecorded,
+            onRequestUsageAccess = onRequestUsageAccess,
             onBeginRescue = onBeginRescue,
             onRescueTick = onRescueTick,
             onRescueContinue = onRescueContinue,
@@ -124,7 +118,6 @@ fun RecoveryTrackAppRoot(
             onRescueFinalUrge = onRescueFinalUrge,
             onRescueComplete = onRescueComplete,
             onRescueReset = onRescueReset,
-            onRequestUsageAccess = onRequestUsageAccess,
             onEnableDailyNotifications = onEnableDailyNotifications,
             onDisableDailyNotifications = onDisableDailyNotifications,
             onEnableBiometricLock = onEnableBiometricLock,
@@ -140,9 +133,10 @@ fun RecoveryTrackAppRoot(
 }
 
 @Composable
-private fun ExplicitAppScaffold(
+private fun AppScaffoldV2(
     state: AppUiState,
     onTabSelected: (AppTab) -> Unit,
+    onProgramSelected: (ProgramDefinition) -> Unit,
     onTrackSelected: (String) -> Unit,
     onMakePrimary: (String) -> Unit,
     onPauseTrack: (String) -> Unit,
@@ -150,6 +144,7 @@ private fun ExplicitAppScaffold(
     onMaintenanceTrack: (String) -> Unit,
     onArchiveTrack: (String) -> Unit,
     onTrackingRecorded: (TrackingEntry) -> Unit,
+    onRequestUsageAccess: () -> Unit,
     onBeginRescue: () -> Unit,
     onRescueTick: () -> Unit,
     onRescueContinue: () -> Unit,
@@ -159,7 +154,6 @@ private fun ExplicitAppScaffold(
     onRescueFinalUrge: (Int) -> Unit,
     onRescueComplete: () -> Unit,
     onRescueReset: () -> Unit,
-    onRequestUsageAccess: () -> Unit,
     onEnableDailyNotifications: () -> Unit,
     onDisableDailyNotifications: () -> Unit,
     onEnableBiometricLock: () -> Unit,
@@ -179,25 +173,21 @@ private fun ExplicitAppScaffold(
                     NavigationBarItem(
                         selected = state.selectedTab == tab,
                         onClick = { onTabSelected(tab) },
-                        icon = { Text(tab.explicitIcon()) },
-                        label = { Text(tab.explicitLabel()) },
+                        icon = { Text(tab.iconV2()) },
+                        label = { Text(tab.labelV2()) },
                     )
                 }
             }
         },
     ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-        ) {
+        Box(Modifier.fillMaxSize().padding(padding)) {
             when (state.selectedTab) {
-                AppTab.HOME -> ExplicitTodayScreen(state)
-                AppTab.TRACK -> ExplicitTracksScreen(
+                AppTab.HOME -> TodayScreenV2(state)
+                AppTab.TRACK -> TracksScreenV2(
                     tracks = state.recoveryTracks,
                     selectedTrack = selectedTrack,
                     availablePrograms = state.availablePrograms,
-                    onProgramSelected = { /* Track creation remains in the persistent header flow. */ },
+                    onProgramSelected = onProgramSelected,
                     onTrackSelected = onTrackSelected,
                     onMakePrimary = onMakePrimary,
                     onPauseTrack = onPauseTrack,
@@ -206,7 +196,7 @@ private fun ExplicitAppScaffold(
                     onArchiveTrack = onArchiveTrack,
                     onTrackingRecorded = onTrackingRecorded,
                 )
-                AppTab.RESCUE -> ExplicitToolsScreen(
+                AppTab.RESCUE -> ToolsScreenV2(
                     state = state,
                     selectedTrack = selectedTrack,
                     onBegin = onBeginRescue,
@@ -219,8 +209,8 @@ private fun ExplicitAppScaffold(
                     onComplete = onRescueComplete,
                     onReset = onRescueReset,
                 )
-                AppTab.INSIGHTS -> ExplicitInsightsScreen(state, selectedTrack)
-                AppTab.PROFILE -> ExplicitYouScreen(
+                AppTab.INSIGHTS -> InsightsScreenV2(state, selectedTrack)
+                AppTab.PROFILE -> YouScreenV2(
                     state = state,
                     onRequestUsageAccess = onRequestUsageAccess,
                     onEnableDailyNotifications = onEnableDailyNotifications,
@@ -237,15 +227,13 @@ private fun ExplicitAppScaffold(
             }
             state.message?.let { message ->
                 Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
                     color = MaterialTheme.colorScheme.inverseSurface,
                     shape = MaterialTheme.shapes.medium,
                 ) {
                     Text(
-                        text = message,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        message,
+                        Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                         color = MaterialTheme.colorScheme.inverseOnSurface,
                     )
                 }
@@ -255,42 +243,35 @@ private fun ExplicitAppScaffold(
 }
 
 @Composable
-private fun ExplicitProgramOnboarding(
-    programs: List<ProgramDefinition>,
-    onSelected: (ProgramDefinition) -> Unit,
-) {
+private fun ProgramOnboardingV2(programs: List<ProgramDefinition>, onSelected: (ProgramDefinition) -> Unit) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
             Spacer(Modifier.height(24.dp))
             Text("What would you like support with?", style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(8.dp))
             Text(
-                "Choose one primary recovery focus. You can add supporting tracks later.",
+                "Choose one primary recovery focus. Supporting tracks can be added later.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         ProgramCategory.entries.forEach { category ->
             item {
                 Text(
-                    text = category.explicitName(),
-                    modifier = Modifier.padding(top = 16.dp),
+                    category.nameV2(),
+                    Modifier.padding(top = 16.dp),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
             items(programs.filter { it.category == category }, key = { it.id.value }) { program ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onSelected(program) },
-                ) {
+                Card(Modifier.fillMaxWidth(), onClick = { onSelected(program) }) {
                     Column(Modifier.padding(16.dp)) {
                         Text(program.displayName, style = MaterialTheme.typography.titleMedium)
                         Text(
-                            text = program.safety.tier.explicitSupportLabel(),
+                            program.safety.tier.supportLabelV2(),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -302,66 +283,50 @@ private fun ExplicitProgramOnboarding(
 }
 
 @Composable
-private fun ExplicitTodayScreen(state: AppUiState) {
+private fun TodayScreenV2(state: AppUiState) {
     val primary = state.recoveryTracks.firstOrNull { it.role == RecoveryTrackRole.PRIMARY }
     val supporting = state.recoveryTracks.filterNot { it.id == primary?.id }
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
             Spacer(Modifier.height(16.dp))
             Text("Today", style = MaterialTheme.typography.headlineLarge)
-            Text(
-                "One useful decision at a time.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Text("One useful decision at a time.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        primary?.let { track ->
-            item { ExplicitTrackSummaryCard(track, primary = true) }
-        }
-        items(supporting, key = { it.id }) { track ->
-            ExplicitTrackSummaryCard(track, primary = false)
-        }
+        primary?.let { item { TrackSummaryCardV2(it, true) } }
+        items(supporting, key = { it.id }) { TrackSummaryCardV2(it, false) }
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("Next action", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(6.dp))
-                    Text("Open Tracks for a private check-in, or Tools when an urge needs immediate attention.")
-                }
+            SectionCardV2("Next action") {
+                Text("Open Tracks for a private check-in, or Tools when an urge needs immediate attention.")
             }
         }
     }
 }
 
 @Composable
-private fun ExplicitTrackSummaryCard(track: RecoveryTrackUi, primary: Boolean) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp)) {
-            Text(track.title, style = MaterialTheme.typography.titleLarge)
+private fun TrackSummaryCardV2(track: RecoveryTrackUi, primary: Boolean) {
+    SectionCardV2(track.title) {
+        Text(
+            if (primary) "Primary recovery track" else "Supporting recovery track",
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text("${track.status.labelV2()} · Progress and lapses stay independent.")
+        if (track.program.safety.tier == SafetyTier.MEDICALLY_HIGH_RISK) {
             Text(
-                text = if (primary) "Primary recovery track" else "Supporting recovery track",
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.labelLarge,
+                "Use professional guidance for major changes. DeAddict does not provide detox or taper instructions.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
             )
-            Spacer(Modifier.height(8.dp))
-            Text("${track.status.explicitLabel()} · Progress and lapses stay independent.")
-            if (track.program.safety.tier == SafetyTier.MEDICALLY_HIGH_RISK) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "Use professional guidance for major changes. DeAddict does not provide detox or taper instructions.",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
         }
     }
 }
 
 @Composable
-private fun ExplicitTracksScreen(
+private fun TracksScreenV2(
     tracks: List<RecoveryTrackUi>,
     selectedTrack: RecoveryTrackUi?,
     availablePrograms: List<ProgramDefinition>,
@@ -377,27 +342,20 @@ private fun ExplicitTracksScreen(
     if (selectedTrack == null) return
     var showAddDialog by remember { mutableStateOf(false) }
     var archiveCandidate by remember { mutableStateOf<RecoveryTrackUi?>(null) }
-    val openIds = tracks.mapTo(mutableSetOf()) { it.program.id.value }
-    val addablePrograms = availablePrograms.filterNot { it.id.value in openIds }
+    val openProgramIds = tracks.mapTo(mutableSetOf()) { it.program.id.value }
+    val addablePrograms = availablePrograms.filterNot { it.id.value in openProgramIds }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
             Spacer(Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text("Tracks", style = MaterialTheme.typography.headlineLarge)
-                    Text(
-                        "Every journey has its own history.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Text("Every journey has its own history.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (addablePrograms.isNotEmpty()) {
                     TextButton(onClick = { showAddDialog = true }) { Text("Add") }
@@ -406,9 +364,7 @@ private fun ExplicitTracksScreen(
         }
         item {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 tracks.forEach { track ->
@@ -416,34 +372,23 @@ private fun ExplicitTracksScreen(
                         selected = track.id == selectedTrack.id,
                         onClick = { onTrackSelected(track.id) },
                         label = {
-                            Text(
-                                if (track.role == RecoveryTrackRole.PRIMARY) {
-                                    "${track.title} · Primary"
-                                } else {
-                                    track.title
-                                },
-                            )
+                            Text(if (track.role == RecoveryTrackRole.PRIMARY) "${track.title} · Primary" else track.title)
                         },
                     )
                 }
             }
         }
         item {
-            ExplicitLifecycleCard(
-                track = selectedTrack,
-                onMakePrimary = onMakePrimary,
-                onPauseTrack = onPauseTrack,
-                onResumeTrack = onResumeTrack,
-                onMaintenanceTrack = onMaintenanceTrack,
+            LifecycleCardV2(
+                selectedTrack,
+                onMakePrimary,
+                onPauseTrack,
+                onResumeTrack,
+                onMaintenanceTrack,
                 onArchiveRequested = { archiveCandidate = it },
             )
         }
-        item {
-            ExplicitTrackingCard(
-                track = selectedTrack,
-                onTrackingRecorded = onTrackingRecorded,
-            )
-        }
+        item { TrackingCardV2(selectedTrack, onTrackingRecorded) }
     }
 
     if (showAddDialog) {
@@ -451,13 +396,10 @@ private fun ExplicitTracksScreen(
             onDismissRequest = { showAddDialog = false },
             title = { Text("Add recovery track") },
             text = {
-                LazyColumn(
-                    modifier = Modifier.heightIn(max = 420.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+                LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(addablePrograms, key = { it.id.value }) { program ->
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            Modifier.fillMaxWidth(),
                             onClick = {
                                 showAddDialog = false
                                 onProgramSelected(program)
@@ -476,9 +418,7 @@ private fun ExplicitTracksScreen(
                 }
             },
             confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) { Text("Cancel") }
-            },
+            dismissButton = { TextButton(onClick = { showAddDialog = false }) { Text("Cancel") } },
         )
     }
 
@@ -486,24 +426,20 @@ private fun ExplicitTracksScreen(
         AlertDialog(
             onDismissRequest = { archiveCandidate = null },
             title = { Text("Archive ${track.title}?") },
-            text = { Text("History will remain available. Continuing later creates a new journey.") },
+            text = { Text("History remains available. Continuing later creates a new journey.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        archiveCandidate = null
-                        onArchiveTrack(track.id)
-                    },
-                ) { Text("Archive") }
+                TextButton(onClick = {
+                    archiveCandidate = null
+                    onArchiveTrack(track.id)
+                }) { Text("Archive") }
             },
-            dismissButton = {
-                TextButton(onClick = { archiveCandidate = null }) { Text("Cancel") }
-            },
+            dismissButton = { TextButton(onClick = { archiveCandidate = null }) { Text("Cancel") } },
         )
     }
 }
 
 @Composable
-private fun ExplicitLifecycleCard(
+private fun LifecycleCardV2(
     track: RecoveryTrackUi,
     onMakePrimary: (String) -> Unit,
     onPauseTrack: (String) -> Unit,
@@ -511,176 +447,130 @@ private fun ExplicitLifecycleCard(
     onMaintenanceTrack: (String) -> Unit,
     onArchiveRequested: (RecoveryTrackUi) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+    SectionCardV2(track.title) {
+        Text("${track.role.labelV2()} · ${track.status.labelV2()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(track.title, style = MaterialTheme.typography.titleLarge)
-            Text(
-                "${track.role.explicitLabel()} · ${track.status.explicitLabel()}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            if (
+                track.role != RecoveryTrackRole.PRIMARY &&
+                track.status in setOf(RecoveryTrackStatus.ACTIVE, RecoveryTrackStatus.MAINTENANCE)
             ) {
-                if (
-                    track.role != RecoveryTrackRole.PRIMARY &&
-                    track.status in setOf(RecoveryTrackStatus.ACTIVE, RecoveryTrackStatus.MAINTENANCE)
-                ) {
-                    TextButton(onClick = { onMakePrimary(track.id) }) { Text("Make primary") }
+                TextButton(onClick = { onMakePrimary(track.id) }) { Text("Make primary") }
+            }
+            when (track.status) {
+                RecoveryTrackStatus.ACTIVE -> {
+                    TextButton(onClick = { onPauseTrack(track.id) }) { Text("Pause") }
+                    TextButton(onClick = { onMaintenanceTrack(track.id) }) { Text("Maintenance") }
                 }
-                when (track.status) {
-                    RecoveryTrackStatus.ACTIVE -> {
-                        TextButton(onClick = { onPauseTrack(track.id) }) { Text("Pause") }
-                        TextButton(onClick = { onMaintenanceTrack(track.id) }) { Text("Maintenance") }
-                    }
-                    RecoveryTrackStatus.PAUSED -> {
-                        TextButton(onClick = { onResumeTrack(track.id) }) { Text("Resume") }
-                    }
-                    RecoveryTrackStatus.MAINTENANCE -> {
-                        TextButton(onClick = { onResumeTrack(track.id) }) { Text("Return active") }
-                    }
-                    RecoveryTrackStatus.ARCHIVED -> Unit
-                }
-                if (track.status != RecoveryTrackStatus.ARCHIVED) {
-                    TextButton(onClick = { onArchiveRequested(track) }) { Text("Archive") }
-                }
+                RecoveryTrackStatus.PAUSED -> TextButton(onClick = { onResumeTrack(track.id) }) { Text("Resume") }
+                RecoveryTrackStatus.MAINTENANCE -> TextButton(onClick = { onResumeTrack(track.id) }) { Text("Return active") }
+                RecoveryTrackStatus.ARCHIVED -> Unit
+            }
+            if (track.status != RecoveryTrackStatus.ARCHIVED) {
+                TextButton(onClick = { onArchiveRequested(track) }) { Text("Archive") }
             }
         }
     }
 }
 
 @Composable
-private fun ExplicitTrackingCard(
-    track: RecoveryTrackUi,
-    onTrackingRecorded: (TrackingEntry) -> Unit,
-) {
+private fun TrackingCardV2(track: RecoveryTrackUi, onTrackingRecorded: (TrackingEntry) -> Unit) {
     var intensity by remember(track.id) { mutableIntStateOf(3) }
     var selectedKind by remember(track.id) { mutableStateOf(TrackingEventKind.URGE) }
     var numericValue by remember(track.id) { mutableStateOf("") }
     var selectedTrigger by remember(track.id) { mutableStateOf<String?>(null) }
-    val needsIntensity = selectedKind in setOf(
-        TrackingEventKind.URGE,
-        TrackingEventKind.CRAVING,
-        TrackingEventKind.SLIP,
-    )
-    val needsValue = selectedKind in setOf(
-        TrackingEventKind.QUANTITY,
-        TrackingEventKind.TIME,
-        TrackingEventKind.COST,
-    )
+    val needsIntensity = selectedKind in setOf(TrackingEventKind.URGE, TrackingEventKind.CRAVING, TrackingEventKind.SLIP)
+    val needsValue = selectedKind in setOf(TrackingEventKind.QUANTITY, TrackingEventKind.TIME, TrackingEventKind.COST)
     val parsedValue = numericValue.toDoubleOrNull()
     val canSave = !needsValue || (parsedValue != null && parsedValue > 0)
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+    SectionCardV2("Private check-in") {
+        Text("Saving to ${track.title}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Private check-in", style = MaterialTheme.typography.titleLarge)
-            Text(
-                "Saving to ${track.title}",
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                listOf(
-                    TrackingEventKind.URGE to "Urge",
-                    TrackingEventKind.CRAVING to "Craving",
-                    TrackingEventKind.SLIP to "Slip",
-                    TrackingEventKind.QUANTITY to "Quantity",
-                    TrackingEventKind.TIME to "Time",
-                    TrackingEventKind.COST to "Cost",
-                    TrackingEventKind.ACTIVITY to "Activity",
-                ).forEach { (kind, label) ->
-                    FilterChip(
-                        selected = selectedKind == kind,
-                        onClick = {
-                            selectedKind = kind
-                            numericValue = ""
-                        },
-                        label = { Text(label) },
-                    )
-                }
-            }
-            if (needsIntensity) {
-                Text("Intensity", style = MaterialTheme.typography.titleMedium)
-                ExplicitIntensityPicker(intensity) { intensity = it }
-            }
-            if (needsValue) {
-                OutlinedTextField(
-                    value = numericValue,
-                    onValueChange = { candidate ->
-                        if (candidate.length <= 10 && candidate.count { it == '.' } <= 1) {
-                            numericValue = candidate.filter { it.isDigit() || it == '.' }
-                        }
+            listOf(
+                TrackingEventKind.URGE to "Urge",
+                TrackingEventKind.CRAVING to "Craving",
+                TrackingEventKind.SLIP to "Slip",
+                TrackingEventKind.QUANTITY to "Quantity",
+                TrackingEventKind.TIME to "Time",
+                TrackingEventKind.COST to "Cost",
+                TrackingEventKind.ACTIVITY to "Activity",
+            ).forEach { (kind, label) ->
+                FilterChip(
+                    selected = selectedKind == kind,
+                    onClick = {
+                        selectedKind = kind
+                        numericValue = ""
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = {
-                        Text(
-                            when (selectedKind) {
-                                TrackingEventKind.TIME -> "Minutes"
-                                TrackingEventKind.COST -> "Cost"
-                                else -> "Quantity"
-                            },
-                        )
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    isError = numericValue.isNotEmpty() && !canSave,
+                    label = { Text(label) },
                 )
             }
-            Text("Trigger", style = MaterialTheme.typography.titleMedium)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                listOf("stress", "boredom", "social", "routine").forEach { trigger ->
-                    FilterChip(
-                        selected = selectedTrigger == trigger,
-                        onClick = {
-                            selectedTrigger = if (selectedTrigger == trigger) null else trigger
-                        },
-                        label = { Text(trigger.replaceFirstChar(Char::uppercase)) },
-                    )
-                }
-            }
-            Button(
-                enabled = canSave,
-                onClick = {
-                    onTrackingRecorded(
-                        TrackingEntry(
-                            kind = selectedKind,
-                            value = parsedValue,
-                            urgeIntensity = if (needsIntensity) intensity else null,
-                            triggerKey = selectedTrigger,
-                        ),
-                    )
-                    numericValue = ""
+        }
+        if (needsIntensity) {
+            Text("Intensity", style = MaterialTheme.typography.titleMedium)
+            IntensityPickerV2(intensity) { intensity = it }
+        }
+        if (needsValue) {
+            OutlinedTextField(
+                value = numericValue,
+                onValueChange = { candidate ->
+                    if (candidate.length <= 10 && candidate.count { it == '.' } <= 1) {
+                        numericValue = candidate.filter { it.isDigit() || it == '.' }
+                    }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-            ) {
-                Text(if (selectedKind == TrackingEventKind.SLIP) "Record slip" else "Save to ${track.title}")
+                modifier = Modifier.fillMaxWidth(),
+                label = {
+                    Text(when (selectedKind) {
+                        TrackingEventKind.TIME -> "Minutes"
+                        TrackingEventKind.COST -> "Cost"
+                        else -> "Quantity"
+                    })
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                isError = numericValue.isNotEmpty() && !canSave,
+            )
+        }
+        Text("Trigger", style = MaterialTheme.typography.titleMedium)
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf("stress", "boredom", "social", "routine").forEach { trigger ->
+                FilterChip(
+                    selected = selectedTrigger == trigger,
+                    onClick = { selectedTrigger = if (selectedTrigger == trigger) null else trigger },
+                    label = { Text(trigger.replaceFirstChar(Char::uppercase)) },
+                )
             }
+        }
+        Button(
+            enabled = canSave,
+            onClick = {
+                onTrackingRecorded(
+                    TrackingEntry(
+                        kind = selectedKind,
+                        value = parsedValue,
+                        urgeIntensity = if (needsIntensity) intensity else null,
+                        triggerKey = selectedTrigger,
+                    ),
+                )
+                numericValue = ""
+            },
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+        ) {
+            Text(if (selectedKind == TrackingEventKind.SLIP) "Record slip" else "Save to ${track.title}")
         }
     }
 }
 
 @Composable
-private fun ExplicitToolsScreen(
+private fun ToolsScreenV2(
     state: AppUiState,
     selectedTrack: RecoveryTrackUi?,
     onBegin: () -> Unit,
@@ -701,9 +591,7 @@ private fun ExplicitToolsScreen(
         }
     }
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
+        Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -712,48 +600,30 @@ private fun ExplicitToolsScreen(
                 Text("Tools", style = MaterialTheme.typography.displaySmall)
                 Text(
                     selectedTrack?.let { "Rescue will be saved to ${it.title}." }
-                        ?: "Choose a recovery track before starting Rescue.",
+                        ?: "Choose a Recovery Track before Rescue.",
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(
-                    "You do not have to decide everything right now.",
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Button(enabled = selectedTrack != null, onClick = onBegin) {
-                    Text("Begin two-minute Rescue")
-                }
+                Text("You do not have to decide everything right now.", textAlign = TextAlign.Center)
+                Button(enabled = selectedTrack != null, onClick = onBegin) { Text("Begin two-minute Rescue") }
                 Text("Works offline", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             RescueStep.PAUSE -> {
                 Text("Pause", style = MaterialTheme.typography.displaySmall)
-                Text(
-                    rescue.secondsRemaining.toString(),
-                    style = MaterialTheme.typography.displayLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    if (rescue.secondsRemaining % 10 < 5) "Breathe in slowly" else "Breathe out gently",
-                    style = MaterialTheme.typography.titleLarge,
-                )
+                Text(rescue.secondsRemaining.toString(), style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.primary)
+                Text(if (rescue.secondsRemaining % 10 < 5) "Breathe in slowly" else "Breathe out gently")
                 Button(enabled = rescue.secondsRemaining == 0, onClick = onContinue) { Text("Continue") }
             }
             RescueStep.MOTIVATION -> {
                 Text("Remember why", style = MaterialTheme.typography.headlineLarge)
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        rescue.motivation,
-                        modifier = Modifier.padding(24.dp),
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.titleLarge,
-                    )
+                Card(Modifier.fillMaxWidth()) {
+                    Text(rescue.motivation, Modifier.padding(24.dp), textAlign = TextAlign.Center)
                 }
                 Button(onClick = onContinue) { Text("Keep going") }
             }
             RescueStep.INITIAL_URGE -> {
                 Text("How strong is the urge?", style = MaterialTheme.typography.headlineMedium)
-                ExplicitIntensityPicker(rescue.initialUrge, onInitialUrge)
+                IntensityPickerV2(rescue.initialUrge, onInitialUrge)
                 Button(onClick = onContinue) { Text("Continue") }
             }
             RescueStep.TRIGGER -> {
@@ -767,17 +637,12 @@ private fun ExplicitToolsScreen(
             RescueStep.REPLACEMENT -> {
                 Text("Choose one small action", style = MaterialTheme.typography.headlineMedium)
                 rescue.replacementActions.forEach { action ->
-                    Button(
-                        onClick = { onAction(action) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                    ) { Text(action) }
+                    Button(onClick = { onAction(action) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text(action) }
                 }
             }
             RescueStep.RECHECK -> {
                 Text("Check in again", style = MaterialTheme.typography.headlineMedium)
-                ExplicitIntensityPicker(rescue.finalUrge, onFinalUrge)
+                IntensityPickerV2(rescue.finalUrge, onFinalUrge)
                 Button(onClick = onComplete) { Text("Record outcome") }
             }
             RescueStep.COMPLETE -> {
@@ -789,11 +654,10 @@ private fun ExplicitToolsScreen(
                         else -> "This is difficult right now. The next safe action still matters."
                     },
                     textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.titleMedium,
                 )
                 if (rescue.program?.safety?.tier == SafetyTier.MEDICALLY_HIGH_RISK) {
                     Text(
-                        "Seek immediate professional or emergency help when there is danger, overdose risk, severe withdrawal, or inability to stay safe.",
+                        "Seek immediate professional or emergency help for danger, overdose risk, severe withdrawal, or inability to stay safe.",
                         color = MaterialTheme.colorScheme.error,
                         textAlign = TextAlign.Center,
                     )
@@ -805,10 +669,10 @@ private fun ExplicitToolsScreen(
 }
 
 @Composable
-private fun ExplicitInsightsScreen(state: AppUiState, selectedTrack: RecoveryTrackUi?) {
+private fun InsightsScreenV2(state: AppUiState, selectedTrack: RecoveryTrackUi?) {
     val insights = state.insights
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -816,49 +680,29 @@ private fun ExplicitInsightsScreen(state: AppUiState, selectedTrack: RecoveryTra
             Spacer(Modifier.height(16.dp))
             Text("Insights", style = MaterialTheme.typography.headlineLarge)
             Text(
-                selectedTrack?.let { "Patterns for ${it.title} only." }
-                    ?: "Choose a Recovery Track to view its patterns.",
+                selectedTrack?.let { "Patterns for ${it.title} only." } ?: "Choose a track to view patterns.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         if (insights == null) {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        "Record a few check-ins for this track to begin seeing explainable patterns.",
-                        modifier = Modifier.padding(20.dp),
-                    )
-                }
-            }
+            item { SectionCardV2("Not enough data") { Text("Record a few check-ins for this track to begin seeing patterns.") } }
         } else {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(20.dp)) {
-                        Text("Seven-day summary", style = MaterialTheme.typography.titleLarge)
-                        Spacer(Modifier.height(10.dp))
-                        ExplicitMetric("Check-ins", insights.checkInCount.toString())
-                        ExplicitMetric("Slips recorded", insights.slipCount.toString())
-                        ExplicitMetric(
-                            "Average recorded intensity",
-                            insights.averageUrge?.let { "%.1f / 5".format(it) } ?: "Not enough data",
-                        )
-                        ExplicitMetric("Rescue sessions", insights.rescueCount.toString())
-                    }
+                SectionCardV2("Seven-day summary") {
+                    MetricV2("Check-ins", insights.checkInCount.toString())
+                    MetricV2("Slips recorded", insights.slipCount.toString())
+                    MetricV2("Average intensity", insights.averageUrge?.let { "%.1f / 5".format(it) } ?: "Not enough data")
+                    MetricV2("Rescue sessions", insights.rescueCount.toString())
                 }
             }
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(20.dp)) {
-                        Text("Why you’re seeing this", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(8.dp))
-                        Text(insights.explanation)
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            "These are recorded patterns for one Recovery Track, not a diagnosis or prediction.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
+                SectionCardV2("Why you’re seeing this") {
+                    Text(insights.explanation)
+                    Text(
+                        "These are recorded patterns for one Recovery Track, not a diagnosis or prediction.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -866,7 +710,7 @@ private fun ExplicitInsightsScreen(state: AppUiState, selectedTrack: RecoveryTra
 }
 
 @Composable
-private fun ExplicitYouScreen(
+private fun YouScreenV2(
     state: AppUiState,
     onRequestUsageAccess: () -> Unit,
     onEnableDailyNotifications: () -> Unit,
@@ -887,20 +731,16 @@ private fun ExplicitYouScreen(
             title = { Text("Delete local recovery data?") },
             text = { Text("Tracks, check-ins, Rescue sessions, and local insights will be removed from this device.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmDelete = false
-                        onDeleteLocalData()
-                    },
-                ) { Text("Delete") }
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onDeleteLocalData()
+                }) { Text("Delete") }
             },
-            dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
-            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -910,118 +750,89 @@ private fun ExplicitYouScreen(
             Text("Privacy, reminders, data, and membership.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("DeAddict Plus", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(8.dp))
-                    if (state.billing.entitlement == EntitlementTier.PLUS) {
-                        Text("Plus is active", color = MaterialTheme.colorScheme.primary)
-                    } else {
-                        state.billing.offers.forEach { offer ->
-                            Button(
-                                onClick = { onPurchasePlus(offer.offerToken) },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text("${offer.basePlanId}: ${offer.formattedPrice}") }
-                            Spacer(Modifier.height(8.dp))
-                        }
-                        if (state.billing.offers.isEmpty()) {
-                            Text(
-                                if (state.billing.loading) "Loading plans…" else "Plus is unavailable right now.",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+            SectionCardV2("DeAddict Plus") {
+                if (state.billing.entitlement == EntitlementTier.PLUS) {
+                    Text("Plus is active", color = MaterialTheme.colorScheme.primary)
+                } else {
+                    state.billing.offers.forEach { offer ->
+                        Button(onClick = { onPurchasePlus(offer.offerToken) }, modifier = Modifier.fillMaxWidth()) {
+                            Text("${offer.basePlanId}: ${offer.formattedPrice}")
                         }
                     }
-                    state.billing.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                    if (
-                        state.billing.verification == PurchaseVerificationStatus.PENDING ||
-                        state.billing.verification == PurchaseVerificationStatus.BACKEND_UNAVAILABLE
-                    ) {
-                        Text(
-                            "Purchase verification is required before Plus can activate.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+                    if (state.billing.offers.isEmpty()) {
+                        Text(if (state.billing.loading) "Loading plans…" else "Plus is unavailable right now.")
                     }
-                    TextButton(onClick = onRestorePurchases) { Text("Restore purchases") }
+                }
+                state.billing.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (
+                    state.billing.verification == PurchaseVerificationStatus.PENDING ||
+                    state.billing.verification == PurchaseVerificationStatus.BACKEND_UNAVAILABLE
+                ) {
+                    Text("Purchase verification is required before Plus can activate.", style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = onRestorePurchases) { Text("Restore purchases") }
+            }
+        }
+        item {
+            SectionCardV2("Privacy and security") {
+                ToggleV2(
+                    "Biometric app lock",
+                    "Require biometrics or the device credential when returning.",
+                    state.privacyPreferences.biometricLockEnabled,
+                ) { if (it) onEnableBiometricLock() else onDisableBiometricLock() }
+                HorizontalDivider()
+                ToggleV2(
+                    "Protect screenshots and previews",
+                    "Block screenshots and obscure the recent-app preview.",
+                    state.privacyPreferences.screenProtectionEnabled,
+                    onScreenProtectionChanged,
+                )
+                HorizontalDivider()
+                ToggleV2(
+                    "Usage monitoring",
+                    "Use granted app-level usage access for digital estimates.",
+                    state.privacyPreferences.usageMonitoringEnabled,
+                    onUsageMonitoringChanged,
+                )
+                HorizontalDivider()
+                ToggleV2(
+                    "Anonymous analytics",
+                    "Off by default. Notes and sensitive content are excluded.",
+                    state.privacyPreferences.analyticsEnabled,
+                    onAnalyticsChanged,
+                )
+            }
+        }
+        item {
+            SectionCardV2("Private reminders") {
+                Text("Reminder text does not name a habit or Recovery Track.")
+                if (state.notificationPreferences.dailyCheckInEnabled) {
+                    Text("Daily check-in enabled", color = MaterialTheme.colorScheme.primary)
+                    TextButton(onClick = onDisableDailyNotifications) { Text("Turn off") }
+                } else {
+                    Button(onClick = onEnableDailyNotifications) { Text("Enable daily check-in") }
                 }
             }
         }
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("Privacy and security", style = MaterialTheme.typography.titleLarge)
-                    ExplicitToggle(
-                        label = "Biometric app lock",
-                        description = "Require biometrics or the device credential when returning.",
-                        checked = state.privacyPreferences.biometricLockEnabled,
-                        onChanged = { enabled ->
-                            if (enabled) onEnableBiometricLock() else onDisableBiometricLock()
-                        },
-                    )
-                    HorizontalDivider()
-                    ExplicitToggle(
-                        label = "Protect screenshots and previews",
-                        description = "Block screenshots and obscure the recent-app preview.",
-                        checked = state.privacyPreferences.screenProtectionEnabled,
-                        onChanged = onScreenProtectionChanged,
-                    )
-                    HorizontalDivider()
-                    ExplicitToggle(
-                        label = "Usage monitoring",
-                        description = "Use granted app-level usage access for digital estimates.",
-                        checked = state.privacyPreferences.usageMonitoringEnabled,
-                        onChanged = onUsageMonitoringChanged,
-                    )
-                    HorizontalDivider()
-                    ExplicitToggle(
-                        label = "Anonymous analytics",
-                        description = "Off by default. Notes and sensitive content are excluded.",
-                        checked = state.privacyPreferences.analyticsEnabled,
-                        onChanged = onAnalyticsChanged,
-                    )
+            SectionCardV2("Digital usage") {
+                if (!state.usageAccessGranted) {
+                    Text("Optional Android usage access can estimate app time and opening patterns.")
+                    Button(onClick = onRequestUsageAccess) { Text("Choose usage access") }
+                } else {
+                    state.dailyUsage?.let { usage ->
+                        MetricV2("Estimated app time today", "${usage.totalForegroundMinutes} min")
+                        MetricV2("Estimated openings", usage.totalOpeningEstimate.toString())
+                    } ?: Text("No estimate is available yet.")
+                    TextButton(onClick = onRequestUsageAccess) { Text("Manage Android access") }
                 }
             }
         }
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("Private reminders", style = MaterialTheme.typography.titleLarge)
-                    Text("Reminder text does not name a habit or Recovery Track.")
-                    Spacer(Modifier.height(10.dp))
-                    if (state.notificationPreferences.dailyCheckInEnabled) {
-                        Text("Daily check-in enabled", color = MaterialTheme.colorScheme.primary)
-                        TextButton(onClick = onDisableDailyNotifications) { Text("Turn off") }
-                    } else {
-                        Button(onClick = onEnableDailyNotifications) { Text("Enable daily check-in") }
-                    }
-                }
-            }
-        }
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("Digital usage", style = MaterialTheme.typography.titleLarge)
-                    if (!state.usageAccessGranted) {
-                        Text("Optional Android usage access can estimate app time and opening patterns.")
-                        Spacer(Modifier.height(10.dp))
-                        Button(onClick = onRequestUsageAccess) { Text("Choose usage access") }
-                    } else {
-                        state.dailyUsage?.let { usage ->
-                            ExplicitMetric("Estimated app time today", "${usage.totalForegroundMinutes} min")
-                            ExplicitMetric("Estimated openings", usage.totalOpeningEstimate.toString())
-                        } ?: Text("No estimate is available yet.")
-                        TextButton(onClick = onRequestUsageAccess) { Text("Manage Android access") }
-                    }
-                }
-            }
-        }
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("Your data", style = MaterialTheme.typography.titleLarge)
-                    Text("Delete recovery data stored on this device. Privacy settings are retained.")
-                    TextButton(onClick = { confirmDelete = true }) {
-                        Text("Delete local data", color = MaterialTheme.colorScheme.error)
-                    }
+            SectionCardV2("Your data") {
+                Text("Delete recovery data stored on this device. Privacy settings are retained.")
+                TextButton(onClick = { confirmDelete = true }) {
+                    Text("Delete local data", color = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -1029,11 +840,21 @@ private fun ExplicitYouScreen(
 }
 
 @Composable
-private fun ExplicitIntensityPicker(selected: Int, onSelected: (Int) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
+private fun SectionCardV2(title: String, content: @Composable Column.() -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun IntensityPickerV2(selected: Int, onSelected: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         (1..5).forEach { value ->
             if (value == selected) {
                 Button(onClick = { onSelected(value) }) { Text("$value") }
@@ -1046,39 +867,25 @@ private fun ExplicitIntensityPicker(selected: Int, onSelected: (Int) -> Unit) {
 }
 
 @Composable
-private fun ExplicitToggle(
+private fun ToggleV2(
     label: String,
     description: String,
     checked: Boolean,
     onChanged: (Boolean) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
             Text(label, fontWeight = FontWeight.Medium)
             Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(12.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = onChanged,
-            modifier = Modifier.semantics { contentDescription = label },
-        )
+        Switch(checked, onChanged, Modifier.semantics { contentDescription = label })
     }
 }
 
 @Composable
-private fun ExplicitMetric(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 5.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
+private fun MetricV2(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(12.dp))
         Text(value, fontWeight = FontWeight.SemiBold)
@@ -1086,24 +893,21 @@ private fun ExplicitMetric(label: String, value: String) {
 }
 
 @Composable
-private fun ExplicitLockedScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+private fun LockedScreenV2() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("DeAddict is locked", style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(8.dp))
             Text("Confirm your identity to continue.")
         }
     }
 }
 
 @Composable
-private fun ExplicitLoadingScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator()
-    }
+private fun LoadingScreenV2() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 }
 
-private fun AppTab.explicitLabel(): String = when (this) {
+private fun AppTab.labelV2() = when (this) {
     AppTab.HOME -> "Today"
     AppTab.TRACK -> "Tracks"
     AppTab.RESCUE -> "Tools"
@@ -1111,7 +915,7 @@ private fun AppTab.explicitLabel(): String = when (this) {
     AppTab.PROFILE -> "You"
 }
 
-private fun AppTab.explicitIcon(): String = when (this) {
+private fun AppTab.iconV2() = when (this) {
     AppTab.HOME -> "●"
     AppTab.TRACK -> "+"
     AppTab.RESCUE -> "◉"
@@ -1119,25 +923,25 @@ private fun AppTab.explicitIcon(): String = when (this) {
     AppTab.PROFILE -> "○"
 }
 
-private fun RecoveryTrackRole.explicitLabel(): String = when (this) {
+private fun RecoveryTrackRole.labelV2() = when (this) {
     RecoveryTrackRole.PRIMARY -> "Primary"
     RecoveryTrackRole.SUPPORTING -> "Supporting"
 }
 
-private fun RecoveryTrackStatus.explicitLabel(): String = when (this) {
+private fun RecoveryTrackStatus.labelV2() = when (this) {
     RecoveryTrackStatus.ACTIVE -> "Active"
     RecoveryTrackStatus.PAUSED -> "Paused"
     RecoveryTrackStatus.MAINTENANCE -> "Maintenance"
     RecoveryTrackStatus.ARCHIVED -> "Archived"
 }
 
-private fun ProgramCategory.explicitName(): String = when (this) {
+private fun ProgramCategory.nameV2() = when (this) {
     ProgramCategory.SUBSTANCE -> "Substances"
     ProgramCategory.DIGITAL -> "Digital habits"
     ProgramCategory.BEHAVIOURAL -> "Behavioural habits"
 }
 
-private fun SafetyTier.explicitSupportLabel(): String = when (this) {
+private fun SafetyTier.supportLabelV2() = when (this) {
     SafetyTier.GENERAL_SELF_MANAGEMENT -> "Self-management support"
     SafetyTier.CLINICALLY_SENSITIVE -> "Sensitive support"
     SafetyTier.MEDICALLY_HIGH_RISK -> "Professional guidance recommended"
