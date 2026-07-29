@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.Upsert
 import com.deaddict.database.entity.RecoveryTrackEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -96,7 +97,7 @@ interface RecoveryTrackDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(track: RecoveryTrackEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertFromCloud(track: RecoveryTrackEntity)
 
     @Update

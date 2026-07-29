@@ -25,9 +25,10 @@ class RoomRestoreStore(
 ) : RestoreStore {
     override suspend fun apply(snapshot: CloudSnapshot): RestoreSummary =
         database.withTransaction {
-            var inserted = 0
-            var updated = 0
-            var skipped = 0
+            val recovery = RecoveryCloudRestorer(database).apply(snapshot)
+            var inserted = recovery.inserted
+            var updated = recovery.updated
+            var skipped = recovery.skipped
             val programTombstones = database.syncOutboxDao()
                 .deleteTombstoneIds(SyncAggregateType.ACTIVE_PROGRAM.name)
                 .toHashSet()

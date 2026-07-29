@@ -26,7 +26,8 @@ class CloudRestoreProcessorTest {
     }
 
     @Test
-    fun `authenticated user applies downloaded snapshot`() = runBlocking {
+    fun `authenticated user applies downloaded snapshot including Recovery Tracks`() = runBlocking {
+        val trackId = "00000000-0000-0000-0000-000000000001"
         val snapshot = CloudSnapshot(
             programs = listOf(
                 RemoteProgramRecord(
@@ -39,17 +40,52 @@ class CloudRestoreProcessorTest {
             ),
             trackingEvents = emptyList(),
             rescueSessions = emptyList(),
+            recoveryTracks = listOf(
+                RemoteRecoveryTrackRecord(
+                    id = trackId,
+                    userId = "user-1",
+                    programId = "gaming",
+                    displayAlias = null,
+                    role = "PRIMARY",
+                    status = "ACTIVE",
+                    startedAtEpochMillis = 1_000L,
+                    pausedAtEpochMillis = null,
+                    maintenanceAtEpochMillis = null,
+                    archivedAtEpochMillis = null,
+                    createdAtEpochMillis = 1_000L,
+                    clientUpdatedAtEpochMillis = 1_000L,
+                    revision = 0,
+                ),
+            ),
+            recoveryGoals = listOf(
+                RemoteRecoveryGoalRecord(
+                    id = "00000000-0000-0000-0000-000000000002",
+                    userId = "user-1",
+                    recoveryTrackId = trackId,
+                    goalType = "AWARENESS_ONLY",
+                    targetValue = null,
+                    unitKey = null,
+                    periodType = null,
+                    title = null,
+                    effectiveFromEpochMillis = 1_000L,
+                    effectiveUntilEpochMillis = null,
+                    createdAtEpochMillis = 1_000L,
+                    clientUpdatedAtEpochMillis = 1_000L,
+                    revision = 0,
+                ),
+            ),
         )
         val store = RecordingRestoreStore(
-            summary = RestoreSummary(inserted = 1, updated = 0, skipped = 0),
+            summary = RestoreSummary(inserted = 3, updated = 0, skipped = 0),
         )
         val remote = RestoreRemoteGateway(snapshot = snapshot)
 
         val result = CloudRestoreProcessor(store, remote).restore()
 
-        assertEquals(RestoreSummary(1, 0, 0), result)
+        assertEquals(RestoreSummary(3, 0, 0), result)
         assertSame(snapshot, store.appliedSnapshot)
         assertEquals(1, remote.downloadCount)
+        assertEquals(trackId, store.appliedSnapshot?.recoveryGoals?.single()?.recoveryTrackId)
     }
 }
 

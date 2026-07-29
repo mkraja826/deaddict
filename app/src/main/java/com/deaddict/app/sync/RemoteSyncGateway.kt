@@ -17,6 +17,8 @@ data class CloudSnapshot(
     val programs: List<RemoteProgramRecord>,
     val trackingEvents: List<RemoteTrackingRecord>,
     val rescueSessions: List<RemoteRescueRecord>,
+    val recoveryTracks: List<RemoteRecoveryTrackRecord> = emptyList(),
+    val recoveryGoals: List<RemoteRecoveryGoalRecord> = emptyList(),
 )
 
 data class RemoteProgramRecord(
@@ -25,6 +27,38 @@ data class RemoteProgramRecord(
     val activatedAtEpochMillis: Long,
     val archivedAtEpochMillis: Long?,
     val clientUpdatedAtEpochMillis: Long,
+)
+
+data class RemoteRecoveryTrackRecord(
+    val id: String,
+    val userId: String,
+    val programId: String,
+    val displayAlias: String?,
+    val role: String,
+    val status: String,
+    val startedAtEpochMillis: Long,
+    val pausedAtEpochMillis: Long?,
+    val maintenanceAtEpochMillis: Long?,
+    val archivedAtEpochMillis: Long?,
+    val createdAtEpochMillis: Long,
+    val clientUpdatedAtEpochMillis: Long,
+    val revision: Long,
+)
+
+data class RemoteRecoveryGoalRecord(
+    val id: String,
+    val userId: String,
+    val recoveryTrackId: String,
+    val goalType: String,
+    val targetValue: Double?,
+    val unitKey: String?,
+    val periodType: String?,
+    val title: String?,
+    val effectiveFromEpochMillis: Long,
+    val effectiveUntilEpochMillis: Long?,
+    val createdAtEpochMillis: Long,
+    val clientUpdatedAtEpochMillis: Long,
+    val revision: Long,
 )
 
 data class RemoteTrackingRecord(
@@ -112,6 +146,7 @@ class SupabaseRemoteSyncGateway(
                 archivedAt = track.archivedAtEpochMillis?.toIsoInstant(),
                 clientUpdatedAt = track.updatedAtEpochMillis.toIsoInstant(),
                 revision = track.revision,
+                createdAt = track.createdAtEpochMillis.toIsoInstant(),
             ),
         )
     }
@@ -131,6 +166,7 @@ class SupabaseRemoteSyncGateway(
                 effectiveUntil = goal.effectiveUntilEpochMillis?.toIsoInstant(),
                 clientUpdatedAt = goal.updatedAtEpochMillis.toIsoInstant(),
                 revision = goal.revision,
+                createdAt = goal.createdAtEpochMillis.toIsoInstant(),
             ),
         )
     }
@@ -209,6 +245,14 @@ class SupabaseRemoteSyncGateway(
                 .select()
                 .decodeList<CloudRescueSession>()
                 .map(CloudRescueSession::toRemoteRecord),
+            recoveryTracks = supabase.from("recovery_tracks")
+                .select()
+                .decodeList<CloudRecoveryTrack>()
+                .map(CloudRecoveryTrack::toRemoteRecord),
+            recoveryGoals = supabase.from("recovery_goal_versions")
+                .select()
+                .decodeList<CloudRecoveryGoal>()
+                .map(CloudRecoveryGoal::toRemoteRecord),
         )
     }
 
@@ -248,7 +292,24 @@ private data class CloudRecoveryTrack(
     @SerialName("archived_at") val archivedAt: String?,
     @SerialName("client_updated_at") val clientUpdatedAt: String,
     val revision: Long,
-)
+    @SerialName("created_at") val createdAt: String,
+) {
+    fun toRemoteRecord() = RemoteRecoveryTrackRecord(
+        id = id,
+        userId = userId,
+        programId = programId,
+        displayAlias = displayAlias,
+        role = role,
+        status = status,
+        startedAtEpochMillis = startedAt.toEpochMillis(),
+        pausedAtEpochMillis = pausedAt?.toEpochMillis(),
+        maintenanceAtEpochMillis = maintenanceAt?.toEpochMillis(),
+        archivedAtEpochMillis = archivedAt?.toEpochMillis(),
+        createdAtEpochMillis = createdAt.toEpochMillis(),
+        clientUpdatedAtEpochMillis = clientUpdatedAt.toEpochMillis(),
+        revision = revision,
+    )
+}
 
 @Serializable
 private data class CloudRecoveryGoal(
@@ -264,7 +325,24 @@ private data class CloudRecoveryGoal(
     @SerialName("effective_until") val effectiveUntil: String?,
     @SerialName("client_updated_at") val clientUpdatedAt: String,
     val revision: Long,
-)
+    @SerialName("created_at") val createdAt: String,
+) {
+    fun toRemoteRecord() = RemoteRecoveryGoalRecord(
+        id = id,
+        userId = userId,
+        recoveryTrackId = recoveryTrackId,
+        goalType = goalType,
+        targetValue = targetValue,
+        unitKey = unitKey,
+        periodType = periodType,
+        title = title,
+        effectiveFromEpochMillis = effectiveFrom.toEpochMillis(),
+        effectiveUntilEpochMillis = effectiveUntil?.toEpochMillis(),
+        createdAtEpochMillis = createdAt.toEpochMillis(),
+        clientUpdatedAtEpochMillis = clientUpdatedAt.toEpochMillis(),
+        revision = revision,
+    )
+}
 
 @Serializable
 private data class CloudTrackingEvent(

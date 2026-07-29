@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.Upsert
 import com.deaddict.database.entity.RecoveryGoalVersionEntity
 import com.deaddict.database.entity.SyncState
 import kotlinx.coroutines.flow.Flow
@@ -56,7 +57,7 @@ interface RecoveryGoalDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(goal: RecoveryGoalVersionEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertFromCloud(goal: RecoveryGoalVersionEntity)
 
     @Update
