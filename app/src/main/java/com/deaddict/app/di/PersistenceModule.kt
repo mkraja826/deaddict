@@ -19,6 +19,7 @@ import com.deaddict.database.MIGRATION_1_2
 import com.deaddict.database.MIGRATION_2_3
 import com.deaddict.database.RECOVERY_TRACK_DATABASE_CALLBACK
 import com.deaddict.database.repository.LocalProgramRepository
+import com.deaddict.database.repository.LocalRecoveryTrackRepository
 import com.deaddict.database.repository.LocalRescueRepository
 import com.deaddict.database.repository.LocalTrackingRepository
 import com.deaddict.programs.DefaultProgramRegistry
@@ -68,6 +69,11 @@ object PersistenceModule {
     @Singleton
     fun programRepository(database: DeAddictDatabase): LocalProgramRepository =
         LocalProgramRepository(database)
+
+    @Provides
+    @Singleton
+    fun recoveryTrackRepository(database: DeAddictDatabase): LocalRecoveryTrackRepository =
+        LocalRecoveryTrackRepository(database)
 
     @Provides
     @Singleton
