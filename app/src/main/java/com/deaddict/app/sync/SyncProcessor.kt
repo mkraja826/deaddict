@@ -3,6 +3,8 @@ package com.deaddict.app.sync
 import androidx.room.withTransaction
 import com.deaddict.database.DeAddictDatabase
 import com.deaddict.database.entity.ActiveProgramEntity
+import com.deaddict.database.entity.RecoveryGoalVersionEntity
+import com.deaddict.database.entity.RecoveryTrackEntity
 import com.deaddict.database.entity.RescueSessionEntity
 import com.deaddict.database.entity.SyncAggregateType
 import com.deaddict.database.entity.SyncOperation
@@ -19,6 +21,10 @@ interface SyncStore {
     suspend fun claim(id: String): Boolean
 
     suspend fun program(id: String): ActiveProgramEntity?
+
+    suspend fun recoveryTrack(id: String): RecoveryTrackEntity?
+
+    suspend fun recoveryGoal(id: String): RecoveryGoalVersionEntity?
 
     suspend fun trackingEvent(id: String): TrackingEventEntity?
 
@@ -46,6 +52,12 @@ class RoomSyncStore(
     override suspend fun program(id: String): ActiveProgramEntity? =
         database.programDao().byId(id)
 
+    override suspend fun recoveryTrack(id: String): RecoveryTrackEntity? =
+        database.recoveryTrackDao().byId(id)
+
+    override suspend fun recoveryGoal(id: String): RecoveryGoalVersionEntity? =
+        database.recoveryGoalDao().byId(id)
+
     override suspend fun trackingEvent(id: String): TrackingEventEntity? =
         database.trackingDao().byId(id)
 
@@ -57,6 +69,8 @@ class RoomSyncStore(
             if (item.operation == SyncOperation.UPSERT) {
                 val marked = when (item.aggregateType) {
                     SyncAggregateType.ACTIVE_PROGRAM -> database.programDao().markSynced(item.aggregateId)
+                    SyncAggregateType.RECOVERY_TRACK -> database.recoveryTrackDao().markSynced(item.aggregateId)
+                    SyncAggregateType.RECOVERY_GOAL -> database.recoveryGoalDao().markSynced(item.aggregateId)
                     SyncAggregateType.TRACKING_EVENT -> database.trackingDao().markSynced(item.aggregateId)
                     SyncAggregateType.RESCUE_SESSION -> database.rescueDao().markSynced(item.aggregateId)
                 }
@@ -138,6 +152,18 @@ class SyncProcessor(
                 SyncAggregateType.ACTIVE_PROGRAM -> remote.upsertProgram(
                     userId,
                     store.program(item.aggregateId)
+                        ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
+                )
+
+                SyncAggregateType.RECOVERY_TRACK -> remote.upsertRecoveryTrack(
+                    userId,
+                    store.recoveryTrack(item.aggregateId)
+                        ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
+                )
+
+                SyncAggregateType.RECOVERY_GOAL -> remote.upsertRecoveryGoal(
+                    userId,
+                    store.recoveryGoal(item.aggregateId)
                         ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
                 )
 

@@ -32,6 +32,42 @@ interface RecoveryTrackDao {
     )
     fun observeArchived(ownerKey: String): Flow<List<RecoveryTrackEntity>>
 
+    @Query(
+        """
+        SELECT * FROM recovery_tracks
+        WHERE ownerKey = :ownerKey
+        ORDER BY createdAtEpochMillis, id
+        """,
+    )
+    suspend fun allForOwner(ownerKey: String): List<RecoveryTrackEntity>
+
+    @Query(
+        """
+        SELECT * FROM recovery_tracks
+        WHERE ownerKey = :ownerKey
+          AND status IN ('ACTIVE', 'PAUSED', 'MAINTENANCE')
+        ORDER BY CASE role WHEN 'PRIMARY' THEN 0 ELSE 1 END,
+                 startedAtEpochMillis,
+                 id
+        """,
+    )
+    suspend fun openForOwner(ownerKey: String): List<RecoveryTrackEntity>
+
+    @Query(
+        """
+        SELECT * FROM recovery_tracks
+        WHERE ownerKey = :ownerKey
+          AND id != :excludedTrackId
+          AND status IN ('ACTIVE', 'MAINTENANCE')
+        ORDER BY startedAtEpochMillis, id
+        LIMIT 1
+        """,
+    )
+    suspend fun primaryFallback(
+        ownerKey: String,
+        excludedTrackId: String,
+    ): RecoveryTrackEntity?
+
     @Query("SELECT * FROM recovery_tracks WHERE id = :id LIMIT 1")
     suspend fun byId(id: String): RecoveryTrackEntity?
 
@@ -60,8 +96,14 @@ interface RecoveryTrackDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(track: RecoveryTrackEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertFromCloud(track: RecoveryTrackEntity)
+
     @Update
     suspend fun update(track: RecoveryTrackEntity): Int
+
+    @Query("UPDATE recovery_tracks SET syncState = 'SYNCED' WHERE id = :id")
+    suspend fun markSynced(id: String): Int
 
     @Query(
         """
