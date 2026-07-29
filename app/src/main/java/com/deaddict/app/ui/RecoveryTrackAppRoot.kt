@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -41,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -49,8 +51,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.deaddict.app.billing.EntitlementTier
 import com.deaddict.app.billing.PurchaseVerificationStatus
+import com.deaddict.app.coach.RookTone
+import com.deaddict.app.onboarding.OnboardingCoordinator
+import com.deaddict.app.onboarding.OnboardingDraft
+import com.deaddict.app.onboarding.OnboardingStep
+import com.deaddict.app.onboarding.OnboardingUsageMode
 import com.deaddict.app.rescue.RescueStep
 import com.deaddict.database.entity.TrackingEventKind
+import com.deaddict.model.RecoveryGoalType
 import com.deaddict.model.RecoveryTrackRole
 import com.deaddict.model.RecoveryTrackStatus
 import com.deaddict.programs.ProgramCategory
@@ -58,7 +66,6 @@ import com.deaddict.programs.ProgramDefinition
 import com.deaddict.programs.SafetyTier
 import kotlinx.coroutines.delay
 
-/** Production entry point that passes an explicit RecoveryTrackUi to every track-sensitive screen. */
 @Composable
 fun RecoveryTrackAppRoot(
     state: AppUiState,
@@ -92,12 +99,42 @@ fun RecoveryTrackAppRoot(
     onDeleteLocalData: () -> Unit,
     onPurchasePlus: (String) -> Unit,
     onRestorePurchases: () -> Unit,
+    onOnboardingNext: () -> Unit,
+    onOnboardingBack: () -> Unit,
+    onOnboardingPrivacyChanged: (Boolean) -> Unit,
+    onOnboardingUsageModeChanged: (OnboardingUsageMode) -> Unit,
+    onOnboardingMotivationChanged: (String) -> Unit,
+    onOnboardingPrimaryProgramChanged: (ProgramDefinition) -> Unit,
+    onOnboardingSafetyChanged: (Boolean) -> Unit,
+    onOnboardingGoalChanged: (RecoveryGoalType) -> Unit,
+    onOnboardingGoalDetailsChanged: (Double?, String?) -> Unit,
+    onOnboardingBaselineChanged: (Double?) -> Unit,
+    onOnboardingTriggerToggled: (String) -> Unit,
+    onOnboardingRookToneChanged: (RookTone) -> Unit,
+    onOnboardingNotificationsChanged: (Boolean) -> Unit,
+    onOnboardingComplete: () -> Unit,
 ) {
     when {
-        !isAppUnlocked -> LockedScreenV2()
-        state.isLoading -> LoadingScreenV2()
-        state.requiresOnboarding -> ProgramOnboardingV2(state.availablePrograms, onProgramSelected)
-        else -> AppScaffoldV2(
+        !isAppUnlocked -> LockedScreen()
+        state.isLoading -> LoadingScreen()
+        state.requiresOnboarding -> OnboardingScreen(
+            state = state,
+            onNext = onOnboardingNext,
+            onBack = onOnboardingBack,
+            onPrivacyChanged = onOnboardingPrivacyChanged,
+            onUsageModeChanged = onOnboardingUsageModeChanged,
+            onMotivationChanged = onOnboardingMotivationChanged,
+            onPrimaryProgramChanged = onOnboardingPrimaryProgramChanged,
+            onSafetyChanged = onOnboardingSafetyChanged,
+            onGoalChanged = onOnboardingGoalChanged,
+            onGoalDetailsChanged = onOnboardingGoalDetailsChanged,
+            onBaselineChanged = onOnboardingBaselineChanged,
+            onTriggerToggled = onOnboardingTriggerToggled,
+            onRookToneChanged = onOnboardingRookToneChanged,
+            onNotificationsChanged = onOnboardingNotificationsChanged,
+            onComplete = onOnboardingComplete,
+        )
+        else -> MainScaffold(
             state = state,
             onTabSelected = onTabSelected,
             onProgramSelected = onProgramSelected,
@@ -133,7 +170,274 @@ fun RecoveryTrackAppRoot(
 }
 
 @Composable
-private fun AppScaffoldV2(
+private fun OnboardingScreen(
+    state: AppUiState,
+    onNext: () -> Unit,
+    onBack: () -> Unit,
+    onPrivacyChanged: (Boolean) -> Unit,
+    onUsageModeChanged: (OnboardingUsageMode) -> Unit,
+    onMotivationChanged: (String) -> Unit,
+    onPrimaryProgramChanged: (ProgramDefinition) -> Unit,
+    onSafetyChanged: (Boolean) -> Unit,
+    onGoalChanged: (RecoveryGoalType) -> Unit,
+    onGoalDetailsChanged: (Double?, String?) -> Unit,
+    onBaselineChanged: (Double?) -> Unit,
+    onTriggerToggled: (String) -> Unit,
+    onRookToneChanged: (RookTone) -> Unit,
+    onNotificationsChanged: (Boolean) -> Unit,
+    onComplete: () -> Unit,
+) {
+    val draft = state.onboarding
+    val coordinator = remember { OnboardingCoordinator() }
+    val selectedProgram = state.availablePrograms.firstOrNull { it.id.value == draft.primaryProgramId }
+    val canContinue = coordinator.canContinue(draft)
+
+    Scaffold(
+        bottomBar = {
+            Surface(shadowElevation = 8.dp) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (draft.step != OnboardingStep.WELCOME) {
+                        TextButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Back") }
+                    }
+                    Button(
+                        onClick = if (draft.step == OnboardingStep.SUMMARY) onComplete else onNext,
+                        enabled = canContinue,
+                        modifier = Modifier.weight(2f).testTag("onboarding_continue"),
+                    ) {
+                        Text(if (draft.step == OnboardingStep.SUMMARY) "Create my Recovery Track" else "Continue")
+                    }
+                }
+            }
+        },
+    ) { padding ->
+        LazyColumn(
+            Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            item {
+                Text("Private setup", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(draft.step.title(), style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    "Step ${OnboardingCoordinator.ORDER.indexOf(draft.step) + 1} of ${OnboardingCoordinator.ORDER.size - 1}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            when (draft.step) {
+                OnboardingStep.WELCOME -> item {
+                    SectionCard("Welcome to DeAddict") {
+                        Text("Build one private recovery journey first. You can add supporting tracks later.")
+                        Text("DeAddict supports self-management. It is not emergency, detox, or medical care.")
+                    }
+                }
+                OnboardingStep.PRIVACY -> item {
+                    SectionCard("Your data stays under your control") {
+                        Text("Check-ins and notes are stored on this device first. Private notes are never included in sync payloads.")
+                        CheckRow("I understand and want to continue", draft.privacyAccepted, onPrivacyChanged)
+                    }
+                }
+                OnboardingStep.USAGE_MODE -> item {
+                    SectionCard("Choose how to begin") {
+                        ChoiceChip(
+                            selected = draft.usageMode == OnboardingUsageMode.PRIVATE_ON_DEVICE,
+                            label = "Private on this device",
+                            onClick = { onUsageModeChanged(OnboardingUsageMode.PRIVATE_ON_DEVICE) },
+                        )
+                        ChoiceChip(
+                            selected = draft.usageMode == OnboardingUsageMode.SIGN_IN_AND_SYNC,
+                            label = "Sign in and sync later",
+                            onClick = { onUsageModeChanged(OnboardingUsageMode.SIGN_IN_AND_SYNC) },
+                        )
+                        Text("Both modes use the same recovery features. Sign-in remains optional.")
+                    }
+                }
+                OnboardingStep.MOTIVATION -> item {
+                    SectionCard("What matters to you?") {
+                        OutlinedTextField(
+                            value = draft.motivation,
+                            onValueChange = onMotivationChanged,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("One reason to make a change") },
+                            minLines = 3,
+                        )
+                    }
+                }
+                OnboardingStep.PRIMARY_PROGRAM -> {
+                    ProgramCategory.entries.forEach { category ->
+                        item { Text(category.label(), style = MaterialTheme.typography.titleMedium) }
+                        items(
+                            state.availablePrograms.filter { it.category == category },
+                            key = { it.id.value },
+                        ) { program ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = { onPrimaryProgramChanged(program) },
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(program.displayName, style = MaterialTheme.typography.titleMedium)
+                                        Text(program.safety.tier.supportLabel(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Checkbox(
+                                        checked = draft.primaryProgramId == program.id.value,
+                                        onCheckedChange = { onPrimaryProgramChanged(program) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                OnboardingStep.SAFETY_DISCLOSURE -> item {
+                    SectionCard(selectedProgram?.displayName ?: "Safety boundary") {
+                        Text(selectedProgram?.safety?.tier?.safetyCopy() ?: "Choose a primary recovery focus first.")
+                        CheckRow("I understand this safety boundary", draft.safetyAcknowledged, onSafetyChanged)
+                    }
+                }
+                OnboardingStep.GOAL_TYPE -> item {
+                    SectionCard("Choose a starting goal") {
+                        RecoveryGoalType.entries.forEach { goal ->
+                            ChoiceChip(
+                                selected = draft.goalType == goal,
+                                label = goal.label(),
+                                onClick = { onGoalChanged(goal) },
+                            )
+                        }
+                    }
+                }
+                OnboardingStep.GOAL_DETAILS -> item {
+                    GoalDetails(draft, onGoalDetailsChanged)
+                }
+                OnboardingStep.BASELINE -> item {
+                    var baselineText by remember(draft.baselineValue) {
+                        mutableStateOf(draft.baselineValue?.toString().orEmpty())
+                    }
+                    SectionCard("Optional baseline") {
+                        Text("A baseline helps DeAddict show change over time. You can skip it.")
+                        OutlinedTextField(
+                            value = baselineText,
+                            onValueChange = { value ->
+                                baselineText = value.filter { it.isDigit() || it == '.' }.take(10)
+                                onBaselineChanged(baselineText.toDoubleOrNull())
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Typical amount, time, or cost") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        )
+                    }
+                }
+                OnboardingStep.TRIGGERS -> item {
+                    SectionCard("What tends to trigger it?") {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                            listOf("stress", "boredom", "social", "routine", "access").forEach { trigger ->
+                                FilterChip(
+                                    selected = trigger in draft.triggerKeys,
+                                    onClick = { onTriggerToggled(trigger) },
+                                    label = { Text(trigger.replaceFirstChar(Char::uppercase)) },
+                                    modifier = Modifier.padding(end = 8.dp),
+                                )
+                            }
+                        }
+                        Text("These answers stay private and can be changed later.")
+                    }
+                }
+                OnboardingStep.SUPPORTING_TRACKS -> item {
+                    SectionCard("Supporting tracks") {
+                        Text("Start with one clear primary journey. Add supporting tracks from the Tracks tab after setup.")
+                    }
+                }
+                OnboardingStep.ROOK -> item {
+                    val highRisk = selectedProgram?.safety?.tier == SafetyTier.MEDICALLY_HIGH_RISK
+                    SectionCard("Choose Rook’s style") {
+                        ChoiceChip(draft.rookTone == RookTone.DIRECT, "Direct", { onRookToneChanged(RookTone.DIRECT) })
+                        ChoiceChip(draft.rookTone == RookTone.QUIET, "Quiet", { onRookToneChanged(RookTone.QUIET) })
+                        if (!highRisk) {
+                            ChoiceChip(
+                                draft.rookTone == RookTone.BRUTAL_BANTER,
+                                "Brutal Banter — explicit opt-in",
+                                { onRookToneChanged(RookTone.BRUTAL_BANTER) },
+                            )
+                        }
+                        Text("Rook challenges excuses and patterns, never your worth. Safety language always overrides tone.")
+                    }
+                }
+                OnboardingStep.NOTIFICATIONS -> item {
+                    SectionCard("Private reminders") {
+                        CheckRow(
+                            "Remember my preference to enable a daily check-in",
+                            draft.notificationsEnabled,
+                            onNotificationsChanged,
+                        )
+                        Text("Android permission is requested only after setup. Reminder text never names a habit.")
+                    }
+                }
+                OnboardingStep.FIRST_CHECK_IN -> item {
+                    SectionCard("Your first action") {
+                        Text("After setup, Today will offer a short private check-in for this Recovery Track.")
+                    }
+                }
+                OnboardingStep.SUMMARY -> item {
+                    SectionCard("Ready to begin") {
+                        Metric("Primary track", selectedProgram?.displayName ?: "Not selected")
+                        Metric("Goal", draft.goalType?.label() ?: "Not selected")
+                        Metric("Rook", draft.rookTone.label())
+                        Metric("Storage", if (draft.usageMode == OnboardingUsageMode.PRIVATE_ON_DEVICE) "On device" else "Local first")
+                        Text("Creating the track is transactional. Your saved answers remain if setup cannot finish.")
+                    }
+                }
+                OnboardingStep.COMPLETE -> item {
+                    SectionCard("Setup complete") { Text("Your Recovery Track is ready.") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GoalDetails(
+    draft: OnboardingDraft,
+    onChanged: (Double?, String?) -> Unit,
+) {
+    if (!draft.goalType.requiresTarget()) {
+        SectionCard("No number required") {
+            Text("This goal can begin without a numeric target. You can refine it later.")
+        }
+        return
+    }
+    var target by remember(draft.goalType, draft.goalTarget) {
+        mutableStateOf(draft.goalTarget?.toString().orEmpty())
+    }
+    var unit by remember(draft.goalType, draft.goalUnit) { mutableStateOf(draft.goalUnit.orEmpty()) }
+    SectionCard("Set a realistic target") {
+        OutlinedTextField(
+            value = target,
+            onValueChange = { value ->
+                target = value.filter { it.isDigit() || it == '.' }.take(10)
+                onChanged(target.toDoubleOrNull(), unit)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Target") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        )
+        OutlinedTextField(
+            value = unit,
+            onValueChange = { value ->
+                unit = value.take(30)
+                onChanged(target.toDoubleOrNull(), unit)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Unit, for example minutes or dollars") },
+        )
+    }
+}
+
+@Composable
+private fun MainScaffold(
     state: AppUiState,
     onTabSelected: (AppTab) -> Unit,
     onProgramSelected: (ProgramDefinition) -> Unit,
@@ -173,8 +477,9 @@ private fun AppScaffoldV2(
                     NavigationBarItem(
                         selected = state.selectedTab == tab,
                         onClick = { onTabSelected(tab) },
-                        icon = { Text(tab.iconV2()) },
-                        label = { Text(tab.labelV2()) },
+                        icon = { Text(tab.icon) },
+                        label = { Text(tab.label) },
+                        modifier = Modifier.testTag("tab_${tab.name.lowercase()}"),
                     )
                 }
             }
@@ -182,8 +487,8 @@ private fun AppScaffoldV2(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (state.selectedTab) {
-                AppTab.HOME -> TodayScreenV2(state)
-                AppTab.TRACK -> TracksScreenV2(
+                AppTab.TODAY -> TodayScreen(state)
+                AppTab.TRACKS -> TracksScreen(
                     tracks = state.recoveryTracks,
                     selectedTrack = selectedTrack,
                     availablePrograms = state.availablePrograms,
@@ -196,7 +501,7 @@ private fun AppScaffoldV2(
                     onArchiveTrack = onArchiveTrack,
                     onTrackingRecorded = onTrackingRecorded,
                 )
-                AppTab.RESCUE -> ToolsScreenV2(
+                AppTab.TOOLS -> ToolsScreen(
                     state = state,
                     selectedTrack = selectedTrack,
                     onBegin = onBeginRescue,
@@ -209,8 +514,8 @@ private fun AppScaffoldV2(
                     onComplete = onRescueComplete,
                     onReset = onRescueReset,
                 )
-                AppTab.INSIGHTS -> InsightsScreenV2(state, selectedTrack)
-                AppTab.PROFILE -> YouScreenV2(
+                AppTab.INSIGHTS -> InsightsScreen(state, selectedTrack)
+                AppTab.YOU -> YouScreen(
                     state = state,
                     onRequestUsageAccess = onRequestUsageAccess,
                     onEnableDailyNotifications = onEnableDailyNotifications,
@@ -243,47 +548,7 @@ private fun AppScaffoldV2(
 }
 
 @Composable
-private fun ProgramOnboardingV2(programs: List<ProgramDefinition>, onSelected: (ProgramDefinition) -> Unit) {
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Spacer(Modifier.height(24.dp))
-            Text("What would you like support with?", style = MaterialTheme.typography.headlineMedium)
-            Text(
-                "Choose one primary recovery focus. Supporting tracks can be added later.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        ProgramCategory.entries.forEach { category ->
-            item {
-                Text(
-                    category.nameV2(),
-                    Modifier.padding(top = 16.dp),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            items(programs.filter { it.category == category }, key = { it.id.value }) { program ->
-                Card(Modifier.fillMaxWidth(), onClick = { onSelected(program) }) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(program.displayName, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            program.safety.tier.supportLabelV2(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TodayScreenV2(state: AppUiState) {
+private fun TodayScreen(state: AppUiState) {
     val primary = state.recoveryTracks.firstOrNull { it.role == RecoveryTrackRole.PRIMARY }
     val supporting = state.recoveryTracks.filterNot { it.id == primary?.id }
     LazyColumn(
@@ -296,10 +561,10 @@ private fun TodayScreenV2(state: AppUiState) {
             Text("Today", style = MaterialTheme.typography.headlineLarge)
             Text("One useful decision at a time.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        primary?.let { item { TrackSummaryCardV2(it, true) } }
-        items(supporting, key = { it.id }) { TrackSummaryCardV2(it, false) }
+        primary?.let { item { TrackSummaryCard(it, true) } }
+        items(supporting, key = { it.id }) { TrackSummaryCard(it, false) }
         item {
-            SectionCardV2("Next action") {
+            SectionCard("Next action") {
                 Text("Open Tracks for a private check-in, or Tools when an urge needs immediate attention.")
             }
         }
@@ -307,14 +572,14 @@ private fun TodayScreenV2(state: AppUiState) {
 }
 
 @Composable
-private fun TrackSummaryCardV2(track: RecoveryTrackUi, primary: Boolean) {
-    SectionCardV2(track.title) {
+private fun TrackSummaryCard(track: RecoveryTrackUi, primary: Boolean) {
+    SectionCard(track.title) {
         Text(
             if (primary) "Primary recovery track" else "Supporting recovery track",
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.SemiBold,
         )
-        Text("${track.status.labelV2()} · Progress and lapses stay independent.")
+        Text("${track.status.label()} · Progress and lapses stay independent.")
         if (track.program.safety.tier == SafetyTier.MEDICALLY_HIGH_RISK) {
             Text(
                 "Use professional guidance for major changes. DeAddict does not provide detox or taper instructions.",
@@ -326,7 +591,7 @@ private fun TrackSummaryCardV2(track: RecoveryTrackUi, primary: Boolean) {
 }
 
 @Composable
-private fun TracksScreenV2(
+private fun TracksScreen(
     tracks: List<RecoveryTrackUi>,
     selectedTrack: RecoveryTrackUi?,
     availablePrograms: List<ProgramDefinition>,
@@ -371,24 +636,23 @@ private fun TracksScreenV2(
                     FilterChip(
                         selected = track.id == selectedTrack.id,
                         onClick = { onTrackSelected(track.id) },
-                        label = {
-                            Text(if (track.role == RecoveryTrackRole.PRIMARY) "${track.title} · Primary" else track.title)
-                        },
+                        label = { Text(if (track.isPrimary) "${track.title} · Primary" else track.title) },
+                        modifier = Modifier.testTag("track_${track.id}"),
                     )
                 }
             }
         }
         item {
-            LifecycleCardV2(
-                selectedTrack,
-                onMakePrimary,
-                onPauseTrack,
-                onResumeTrack,
-                onMaintenanceTrack,
+            LifecycleCard(
+                track = selectedTrack,
+                onMakePrimary = onMakePrimary,
+                onPauseTrack = onPauseTrack,
+                onResumeTrack = onResumeTrack,
+                onMaintenanceTrack = onMaintenanceTrack,
                 onArchiveRequested = { archiveCandidate = it },
             )
         }
-        item { TrackingCardV2(selectedTrack, onTrackingRecorded) }
+        item { TrackingCard(selectedTrack, onTrackingRecorded) }
     }
 
     if (showAddDialog) {
@@ -399,7 +663,7 @@ private fun TracksScreenV2(
                 LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(addablePrograms, key = { it.id.value }) { program ->
                         Card(
-                            Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                             onClick = {
                                 showAddDialog = false
                                 onProgramSelected(program)
@@ -410,7 +674,6 @@ private fun TracksScreenV2(
                                 Text(
                                     "Progress, slips, Rescue sessions, and insights stay independent.",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
@@ -439,7 +702,7 @@ private fun TracksScreenV2(
 }
 
 @Composable
-private fun LifecycleCardV2(
+private fun LifecycleCard(
     track: RecoveryTrackUi,
     onMakePrimary: (String) -> Unit,
     onPauseTrack: (String) -> Unit,
@@ -447,16 +710,10 @@ private fun LifecycleCardV2(
     onMaintenanceTrack: (String) -> Unit,
     onArchiveRequested: (RecoveryTrackUi) -> Unit,
 ) {
-    SectionCardV2(track.title) {
-        Text("${track.role.labelV2()} · ${track.status.labelV2()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            if (
-                track.role != RecoveryTrackRole.PRIMARY &&
-                track.status in setOf(RecoveryTrackStatus.ACTIVE, RecoveryTrackStatus.MAINTENANCE)
-            ) {
+    SectionCard(track.title) {
+        Text("${track.role.label()} · ${track.status.label()}")
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            if (!track.isPrimary && track.status in setOf(RecoveryTrackStatus.ACTIVE, RecoveryTrackStatus.MAINTENANCE)) {
                 TextButton(onClick = { onMakePrimary(track.id) }) { Text("Make primary") }
             }
             when (track.status) {
@@ -476,7 +733,7 @@ private fun LifecycleCardV2(
 }
 
 @Composable
-private fun TrackingCardV2(track: RecoveryTrackUi, onTrackingRecorded: (TrackingEntry) -> Unit) {
+private fun TrackingCard(track: RecoveryTrackUi, onTrackingRecorded: (TrackingEntry) -> Unit) {
     var intensity by remember(track.id) { mutableIntStateOf(3) }
     var selectedKind by remember(track.id) { mutableStateOf(TrackingEventKind.URGE) }
     var numericValue by remember(track.id) { mutableStateOf("") }
@@ -486,12 +743,14 @@ private fun TrackingCardV2(track: RecoveryTrackUi, onTrackingRecorded: (Tracking
     val parsedValue = numericValue.toDoubleOrNull()
     val canSave = !needsValue || (parsedValue != null && parsedValue > 0)
 
-    SectionCardV2("Private check-in") {
-        Text("Saving to ${track.title}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+    SectionCard("Private check-in") {
+        Text(
+            "Saving to ${track.title}",
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.testTag("tracking_destination"),
+        )
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             listOf(
                 TrackingEventKind.URGE to "Urge",
                 TrackingEventKind.CRAVING to "Craving",
@@ -508,44 +767,27 @@ private fun TrackingCardV2(track: RecoveryTrackUi, onTrackingRecorded: (Tracking
                         numericValue = ""
                     },
                     label = { Text(label) },
+                    modifier = Modifier.padding(end = 8.dp),
                 )
             }
         }
-        if (needsIntensity) {
-            Text("Intensity", style = MaterialTheme.typography.titleMedium)
-            IntensityPickerV2(intensity) { intensity = it }
-        }
+        if (needsIntensity) IntensityPicker(intensity) { intensity = it }
         if (needsValue) {
             OutlinedTextField(
                 value = numericValue,
-                onValueChange = { candidate ->
-                    if (candidate.length <= 10 && candidate.count { it == '.' } <= 1) {
-                        numericValue = candidate.filter { it.isDigit() || it == '.' }
-                    }
-                },
+                onValueChange = { value -> numericValue = value.filter { it.isDigit() || it == '.' }.take(10) },
                 modifier = Modifier.fillMaxWidth(),
-                label = {
-                    Text(when (selectedKind) {
-                        TrackingEventKind.TIME -> "Minutes"
-                        TrackingEventKind.COST -> "Cost"
-                        else -> "Quantity"
-                    })
-                },
+                label = { Text(if (selectedKind == TrackingEventKind.TIME) "Minutes" else "Amount") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                isError = numericValue.isNotEmpty() && !canSave,
             )
         }
-        Text("Trigger", style = MaterialTheme.typography.titleMedium)
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             listOf("stress", "boredom", "social", "routine").forEach { trigger ->
                 FilterChip(
                     selected = selectedTrigger == trigger,
                     onClick = { selectedTrigger = if (selectedTrigger == trigger) null else trigger },
                     label = { Text(trigger.replaceFirstChar(Char::uppercase)) },
+                    modifier = Modifier.padding(end = 8.dp),
                 )
             }
         }
@@ -562,15 +804,13 @@ private fun TrackingCardV2(track: RecoveryTrackUi, onTrackingRecorded: (Tracking
                 )
                 numericValue = ""
             },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-        ) {
-            Text(if (selectedKind == TrackingEventKind.SLIP) "Record slip" else "Save to ${track.title}")
-        }
+            modifier = Modifier.fillMaxWidth().height(52.dp).testTag("save_tracking"),
+        ) { Text(if (selectedKind == TrackingEventKind.SLIP) "Record slip" else "Save to ${track.title}") }
     }
 }
 
 @Composable
-private fun ToolsScreenV2(
+private fun ToolsScreen(
     state: AppUiState,
     selectedTrack: RecoveryTrackUi?,
     onBegin: () -> Unit,
@@ -584,6 +824,7 @@ private fun ToolsScreenV2(
     onReset: () -> Unit,
 ) {
     val rescue = state.rescue
+    val rescueTrack = state.recoveryTracks.firstOrNull { it.id == rescue.recoveryTrackId }
     LaunchedEffect(rescue.step, rescue.secondsRemaining) {
         if (rescue.step == RescueStep.PAUSE && rescue.secondsRemaining > 0) {
             delay(1_000)
@@ -595,35 +836,35 @@ private fun ToolsScreenV2(
         verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        val ownerLabel = rescueTrack?.title ?: selectedTrack?.title
+        ownerLabel?.let {
+            Text(
+                if (rescue.step == RescueStep.READY) "Rescue will be saved to $it" else "Rescue for $it",
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.testTag("rescue_destination"),
+            )
+        }
         when (rescue.step) {
             RescueStep.READY -> {
                 Text("Tools", style = MaterialTheme.typography.displaySmall)
-                Text(
-                    selectedTrack?.let { "Rescue will be saved to ${it.title}." }
-                        ?: "Choose a Recovery Track before Rescue.",
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Text("You do not have to decide everything right now.", textAlign = TextAlign.Center)
-                Button(enabled = selectedTrack != null, onClick = onBegin) { Text("Begin two-minute Rescue") }
-                Text("Works offline", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = onBegin, enabled = selectedTrack != null) { Text("Begin two-minute Rescue") }
+                Text("Works offline")
             }
             RescueStep.PAUSE -> {
                 Text("Pause", style = MaterialTheme.typography.displaySmall)
-                Text(rescue.secondsRemaining.toString(), style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.primary)
+                Text(rescue.secondsRemaining.toString(), style = MaterialTheme.typography.displayLarge)
                 Text(if (rescue.secondsRemaining % 10 < 5) "Breathe in slowly" else "Breathe out gently")
                 Button(enabled = rescue.secondsRemaining == 0, onClick = onContinue) { Text("Continue") }
             }
             RescueStep.MOTIVATION -> {
                 Text("Remember why", style = MaterialTheme.typography.headlineLarge)
-                Card(Modifier.fillMaxWidth()) {
-                    Text(rescue.motivation, Modifier.padding(24.dp), textAlign = TextAlign.Center)
-                }
+                Text(rescue.motivation, textAlign = TextAlign.Center)
                 Button(onClick = onContinue) { Text("Keep going") }
             }
             RescueStep.INITIAL_URGE -> {
                 Text("How strong is the urge?", style = MaterialTheme.typography.headlineMedium)
-                IntensityPickerV2(rescue.initialUrge, onInitialUrge)
+                IntensityPicker(rescue.initialUrge, onInitialUrge)
                 Button(onClick = onContinue) { Text("Continue") }
             }
             RescueStep.TRIGGER -> {
@@ -637,27 +878,20 @@ private fun ToolsScreenV2(
             RescueStep.REPLACEMENT -> {
                 Text("Choose one small action", style = MaterialTheme.typography.headlineMedium)
                 rescue.replacementActions.forEach { action ->
-                    Button(onClick = { onAction(action) }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text(action) }
+                    Button(onClick = { onAction(action) }, modifier = Modifier.fillMaxWidth()) { Text(action) }
                 }
             }
             RescueStep.RECHECK -> {
                 Text("Check in again", style = MaterialTheme.typography.headlineMedium)
-                IntensityPickerV2(rescue.finalUrge, onFinalUrge)
+                IntensityPicker(rescue.finalUrge, onFinalUrge)
                 Button(onClick = onComplete) { Text("Record outcome") }
             }
             RescueStep.COMPLETE -> {
                 Text("Recovery continues", style = MaterialTheme.typography.headlineLarge)
-                Text(
-                    when {
-                        rescue.finalUrge < rescue.initialUrge -> "The urge eased. You created useful space."
-                        rescue.finalUrge == rescue.initialUrge -> "The urge remains, and the pause still counts."
-                        else -> "This is difficult right now. The next safe action still matters."
-                    },
-                    textAlign = TextAlign.Center,
-                )
+                Text("The history remains attached to ${rescueTrack?.title ?: "this Recovery Track"}.")
                 if (rescue.program?.safety?.tier == SafetyTier.MEDICALLY_HIGH_RISK) {
                     Text(
-                        "Seek immediate professional or emergency help for danger, overdose risk, severe withdrawal, or inability to stay safe.",
+                        "For immediate danger, severe withdrawal, or overdose risk, contact local emergency services.",
                         color = MaterialTheme.colorScheme.error,
                         textAlign = TextAlign.Center,
                     )
@@ -669,8 +903,7 @@ private fun ToolsScreenV2(
 }
 
 @Composable
-private fun InsightsScreenV2(state: AppUiState, selectedTrack: RecoveryTrackUi?) {
-    val insights = state.insights
+private fun InsightsScreen(state: AppUiState, selectedTrack: RecoveryTrackUi?) {
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
@@ -680,29 +913,21 @@ private fun InsightsScreenV2(state: AppUiState, selectedTrack: RecoveryTrackUi?)
             Spacer(Modifier.height(16.dp))
             Text("Insights", style = MaterialTheme.typography.headlineLarge)
             Text(
-                selectedTrack?.let { "Patterns for ${it.title} only." } ?: "Choose a track to view patterns.",
+                "Only ${selectedTrack?.title ?: "the selected journey"} is included.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        val insights = state.insights
         if (insights == null) {
-            item { SectionCardV2("Not enough data") { Text("Record a few check-ins for this track to begin seeing patterns.") } }
+            item { SectionCard("Not enough data") { Text("Record a few check-ins to begin seeing patterns.") } }
         } else {
             item {
-                SectionCardV2("Seven-day summary") {
-                    MetricV2("Check-ins", insights.checkInCount.toString())
-                    MetricV2("Slips recorded", insights.slipCount.toString())
-                    MetricV2("Average intensity", insights.averageUrge?.let { "%.1f / 5".format(it) } ?: "Not enough data")
-                    MetricV2("Rescue sessions", insights.rescueCount.toString())
-                }
-            }
-            item {
-                SectionCardV2("Why you’re seeing this") {
+                SectionCard("Seven-day summary") {
+                    Metric("Check-ins", insights.checkInCount.toString())
+                    Metric("Slips recorded", insights.slipCount.toString())
+                    Metric("Average intensity", insights.averageUrge?.let { "%.1f / 5".format(it) } ?: "Not enough data")
+                    Metric("Rescue sessions", insights.rescueCount.toString())
                     Text(insights.explanation)
-                    Text(
-                        "These are recorded patterns for one Recovery Track, not a diagnosis or prediction.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
         }
@@ -710,7 +935,7 @@ private fun InsightsScreenV2(state: AppUiState, selectedTrack: RecoveryTrackUi?)
 }
 
 @Composable
-private fun YouScreenV2(
+private fun YouScreen(
     state: AppUiState,
     onRequestUsageAccess: () -> Unit,
     onEnableDailyNotifications: () -> Unit,
@@ -729,7 +954,7 @@ private fun YouScreenV2(
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete local recovery data?") },
-            text = { Text("Tracks, check-ins, Rescue sessions, and local insights will be removed from this device.") },
+            text = { Text("Recovery Tracks, check-ins, Rescue sessions, and local insights will be removed from this device.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
@@ -747,10 +972,10 @@ private fun YouScreenV2(
         item {
             Spacer(Modifier.height(16.dp))
             Text("You", style = MaterialTheme.typography.headlineLarge)
-            Text("Privacy, reminders, data, and membership.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Privacy, reminders, usage access, and subscription.")
         }
         item {
-            SectionCardV2("DeAddict Plus") {
+            SectionCard("DeAddict Plus") {
                 if (state.billing.entitlement == EntitlementTier.PLUS) {
                     Text("Plus is active", color = MaterialTheme.colorScheme.primary)
                 } else {
@@ -759,80 +984,60 @@ private fun YouScreenV2(
                             Text("${offer.basePlanId}: ${offer.formattedPrice}")
                         }
                     }
-                    if (state.billing.offers.isEmpty()) {
-                        Text(if (state.billing.loading) "Loading plans…" else "Plus is unavailable right now.")
-                    }
+                    if (state.billing.offers.isEmpty()) Text(if (state.billing.loading) "Loading plans…" else "Plans unavailable")
+                    TextButton(onClick = onRestorePurchases) { Text("Restore purchases") }
                 }
-                state.billing.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                if (
-                    state.billing.verification == PurchaseVerificationStatus.PENDING ||
-                    state.billing.verification == PurchaseVerificationStatus.BACKEND_UNAVAILABLE
+                if (state.billing.verification in setOf(
+                        PurchaseVerificationStatus.PENDING,
+                        PurchaseVerificationStatus.BACKEND_UNAVAILABLE,
+                    )
                 ) {
-                    Text("Purchase verification is required before Plus can activate.", style = MaterialTheme.typography.bodySmall)
+                    Text("Purchase verification is required before entitlement activation.")
                 }
-                TextButton(onClick = onRestorePurchases) { Text("Restore purchases") }
             }
         }
         item {
-            SectionCardV2("Privacy and security") {
-                ToggleV2(
+            SectionCard("Digital usage") {
+                if (!state.usageAccessGranted) {
+                    Text("Optional Android usage access can estimate app time and openings.")
+                    Button(onClick = onRequestUsageAccess) { Text("Choose usage access") }
+                } else {
+                    Text("Usage access is enabled")
+                    state.dailyUsage?.let { usage ->
+                        Metric("Estimated app time", "${usage.totalForegroundMinutes} min")
+                        Metric("Estimated openings", usage.totalOpeningEstimate.toString())
+                    }
+                    TextButton(onClick = onRequestUsageAccess) { Text("Manage in Android settings") }
+                }
+            }
+        }
+        item {
+            SectionCard("Privacy and security") {
+                ToggleRow(
                     "Biometric app lock",
-                    "Require biometrics or the device credential when returning.",
                     state.privacyPreferences.biometricLockEnabled,
-                ) { if (it) onEnableBiometricLock() else onDisableBiometricLock() }
-                HorizontalDivider()
-                ToggleV2(
-                    "Protect screenshots and previews",
-                    "Block screenshots and obscure the recent-app preview.",
-                    state.privacyPreferences.screenProtectionEnabled,
-                    onScreenProtectionChanged,
+                    { if (it) onEnableBiometricLock() else onDisableBiometricLock() },
                 )
-                HorizontalDivider()
-                ToggleV2(
-                    "Usage monitoring",
-                    "Use granted app-level usage access for digital estimates.",
-                    state.privacyPreferences.usageMonitoringEnabled,
-                    onUsageMonitoringChanged,
-                )
-                HorizontalDivider()
-                ToggleV2(
-                    "Anonymous analytics",
-                    "Off by default. Notes and sensitive content are excluded.",
-                    state.privacyPreferences.analyticsEnabled,
-                    onAnalyticsChanged,
-                )
+                ToggleRow("Protect screenshots", state.privacyPreferences.screenProtectionEnabled, onScreenProtectionChanged)
+                ToggleRow("Usage monitoring", state.privacyPreferences.usageMonitoringEnabled, onUsageMonitoringChanged)
+                ToggleRow("Anonymous analytics", state.privacyPreferences.analyticsEnabled, onAnalyticsChanged)
             }
         }
         item {
-            SectionCardV2("Private reminders") {
-                Text("Reminder text does not name a habit or Recovery Track.")
+            SectionCard("Private reminders") {
+                Text("Quiet hours: ${state.notificationPreferences.quietStartHour}:00–${state.notificationPreferences.quietEndHour}:00")
                 if (state.notificationPreferences.dailyCheckInEnabled) {
-                    Text("Daily check-in enabled", color = MaterialTheme.colorScheme.primary)
-                    TextButton(onClick = onDisableDailyNotifications) { Text("Turn off") }
+                    TextButton(onClick = onDisableDailyNotifications) { Text("Turn off daily check-in") }
                 } else {
                     Button(onClick = onEnableDailyNotifications) { Text("Enable daily check-in") }
                 }
             }
         }
         item {
-            SectionCardV2("Digital usage") {
-                if (!state.usageAccessGranted) {
-                    Text("Optional Android usage access can estimate app time and opening patterns.")
-                    Button(onClick = onRequestUsageAccess) { Text("Choose usage access") }
-                } else {
-                    state.dailyUsage?.let { usage ->
-                        MetricV2("Estimated app time today", "${usage.totalForegroundMinutes} min")
-                        MetricV2("Estimated openings", usage.totalOpeningEstimate.toString())
-                    } ?: Text("No estimate is available yet.")
-                    TextButton(onClick = onRequestUsageAccess) { Text("Manage Android access") }
-                }
-            }
-        }
-        item {
-            SectionCardV2("Your data") {
-                Text("Delete recovery data stored on this device. Privacy settings are retained.")
+            SectionCard("Your data") {
+                Text("Private notes remain local. Delete local recovery data separately from account deletion.")
                 TextButton(onClick = { confirmDelete = true }) {
-                    Text("Delete local data", color = MaterialTheme.colorScheme.error)
+                    Text("Delete local recovery data", color = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -840,12 +1045,31 @@ private fun YouScreenV2(
 }
 
 @Composable
-private fun SectionCardV2(title: String, content: @Composable Column.() -> Unit) {
+private fun ChoiceChip(selected: Boolean, label: String, onClick: () -> Unit) {
+    FilterChip(selected = selected, onClick = onClick, label = { Text(label) }, modifier = Modifier.fillMaxWidth())
+}
+
+@Composable
+private fun CheckRow(label: String, checked: Boolean, onChanged: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = checked, onCheckedChange = onChanged)
+        Text(label, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun ToggleRow(label: String, checked: Boolean, onChanged: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f))
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = checked, onCheckedChange = onChanged, modifier = Modifier.semantics { contentDescription = label })
+    }
+}
+
+@Composable
+private fun SectionCard(title: String, content: @Composable Column.() -> Unit) {
     Card(Modifier.fillMaxWidth()) {
-        Column(
-            Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge)
             content()
         }
@@ -853,38 +1077,7 @@ private fun SectionCardV2(title: String, content: @Composable Column.() -> Unit)
 }
 
 @Composable
-private fun IntensityPickerV2(selected: Int, onSelected: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        (1..5).forEach { value ->
-            if (value == selected) {
-                Button(onClick = { onSelected(value) }) { Text("$value") }
-            } else {
-                TextButton(onClick = { onSelected(value) }) { Text("$value") }
-            }
-        }
-    }
-    Text("1 is mild · 5 is intense", style = MaterialTheme.typography.bodySmall)
-}
-
-@Composable
-private fun ToggleV2(
-    label: String,
-    description: String,
-    checked: Boolean,
-    onChanged: (Boolean) -> Unit,
-) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(label, fontWeight = FontWeight.Medium)
-            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Spacer(Modifier.width(12.dp))
-        Switch(checked, onChanged, Modifier.semantics { contentDescription = label })
-    }
-}
-
-@Composable
-private fun MetricV2(label: String, value: String) {
+private fun Metric(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(12.dp))
@@ -893,7 +1086,17 @@ private fun MetricV2(label: String, value: String) {
 }
 
 @Composable
-private fun LockedScreenV2() {
+private fun IntensityPicker(selected: Int, onSelected: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        (1..5).forEach { value ->
+            if (selected == value) Button(onClick = { onSelected(value) }) { Text(value.toString()) }
+            else TextButton(onClick = { onSelected(value) }) { Text(value.toString()) }
+        }
+    }
+}
+
+@Composable
+private fun LockedScreen() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("DeAddict is locked", style = MaterialTheme.typography.headlineMedium)
@@ -903,46 +1106,86 @@ private fun LockedScreenV2() {
 }
 
 @Composable
-private fun LoadingScreenV2() {
+private fun LoadingScreen() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 }
 
-private fun AppTab.labelV2() = when (this) {
-    AppTab.HOME -> "Today"
-    AppTab.TRACK -> "Tracks"
-    AppTab.RESCUE -> "Tools"
-    AppTab.INSIGHTS -> "Insights"
-    AppTab.PROFILE -> "You"
+private fun OnboardingStep.title(): String = when (this) {
+    OnboardingStep.WELCOME -> "Begin privately"
+    OnboardingStep.PRIVACY -> "Privacy first"
+    OnboardingStep.USAGE_MODE -> "Choose your mode"
+    OnboardingStep.MOTIVATION -> "Your reason"
+    OnboardingStep.PRIMARY_PROGRAM -> "Primary recovery focus"
+    OnboardingStep.SAFETY_DISCLOSURE -> "Safety boundary"
+    OnboardingStep.GOAL_TYPE -> "Starting goal"
+    OnboardingStep.GOAL_DETAILS -> "Goal details"
+    OnboardingStep.BASELINE -> "Starting baseline"
+    OnboardingStep.TRIGGERS -> "Common triggers"
+    OnboardingStep.SUPPORTING_TRACKS -> "Supporting tracks"
+    OnboardingStep.ROOK -> "Meet Rook"
+    OnboardingStep.NOTIFICATIONS -> "Private reminders"
+    OnboardingStep.FIRST_CHECK_IN -> "First action"
+    OnboardingStep.SUMMARY -> "Review setup"
+    OnboardingStep.COMPLETE -> "Complete"
 }
 
-private fun AppTab.iconV2() = when (this) {
-    AppTab.HOME -> "●"
-    AppTab.TRACK -> "+"
-    AppTab.RESCUE -> "◉"
-    AppTab.INSIGHTS -> "↗"
-    AppTab.PROFILE -> "○"
+private fun RecoveryGoalType.label(): String = when (this) {
+    RecoveryGoalType.QUIT_COMPLETELY -> "Quit completely"
+    RecoveryGoalType.REDUCE_QUANTITY -> "Reduce quantity"
+    RecoveryGoalType.DAILY_LIMIT -> "Daily limit"
+    RecoveryGoalType.WEEKLY_LIMIT -> "Weekly limit"
+    RecoveryGoalType.TIME_LIMIT -> "Time limit"
+    RecoveryGoalType.SPENDING_LIMIT -> "Spending limit"
+    RecoveryGoalType.DELAY_FIRST_USE -> "Delay first use"
+    RecoveryGoalType.NO_USE_PERIOD -> "No-use period"
+    RecoveryGoalType.AWARENESS_ONLY -> "Awareness only"
+    RecoveryGoalType.CUSTOM -> "Custom"
 }
 
-private fun RecoveryTrackRole.labelV2() = when (this) {
+private fun RecoveryGoalType?.requiresTarget(): Boolean = this in setOf(
+    RecoveryGoalType.REDUCE_QUANTITY,
+    RecoveryGoalType.DAILY_LIMIT,
+    RecoveryGoalType.WEEKLY_LIMIT,
+    RecoveryGoalType.TIME_LIMIT,
+    RecoveryGoalType.SPENDING_LIMIT,
+    RecoveryGoalType.DELAY_FIRST_USE,
+)
+
+private fun RookTone.label(): String = when (this) {
+    RookTone.DIRECT -> "Direct"
+    RookTone.BRUTAL_BANTER -> "Brutal Banter"
+    RookTone.QUIET -> "Quiet"
+}
+
+private fun RecoveryTrackRole.label(): String = when (this) {
     RecoveryTrackRole.PRIMARY -> "Primary"
     RecoveryTrackRole.SUPPORTING -> "Supporting"
 }
 
-private fun RecoveryTrackStatus.labelV2() = when (this) {
+private fun RecoveryTrackStatus.label(): String = when (this) {
     RecoveryTrackStatus.ACTIVE -> "Active"
     RecoveryTrackStatus.PAUSED -> "Paused"
     RecoveryTrackStatus.MAINTENANCE -> "Maintenance"
     RecoveryTrackStatus.ARCHIVED -> "Archived"
 }
 
-private fun ProgramCategory.nameV2() = when (this) {
+private fun ProgramCategory.label(): String = when (this) {
     ProgramCategory.SUBSTANCE -> "Substances"
     ProgramCategory.DIGITAL -> "Digital habits"
     ProgramCategory.BEHAVIOURAL -> "Behavioural habits"
 }
 
-private fun SafetyTier.supportLabelV2() = when (this) {
+private fun SafetyTier.supportLabel(): String = when (this) {
     SafetyTier.GENERAL_SELF_MANAGEMENT -> "Self-management support"
     SafetyTier.CLINICALLY_SENSITIVE -> "Sensitive support"
     SafetyTier.MEDICALLY_HIGH_RISK -> "Professional guidance recommended"
+}
+
+private fun SafetyTier.safetyCopy(): String = when (this) {
+    SafetyTier.GENERAL_SELF_MANAGEMENT ->
+        "DeAddict can support awareness, limits, replacement actions, and private check-ins."
+    SafetyTier.CLINICALLY_SENSITIVE ->
+        "This area may benefit from qualified professional support. DeAddict does not diagnose or provide treatment."
+    SafetyTier.MEDICALLY_HIGH_RISK ->
+        "Stopping suddenly can carry serious medical risk. DeAddict does not provide detox or taper instructions. Seek qualified medical guidance before major changes."
 }
