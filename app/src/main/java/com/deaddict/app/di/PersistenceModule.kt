@@ -144,8 +144,10 @@ object PersistenceModule {
 
     @Provides
     @Singleton
-    fun insightsRepository(database: DeAddictDatabase): LocalInsightsRepository =
-        LocalInsightsRepository(database)
+    fun insightsRepository(
+        database: DeAddictDatabase,
+        ownerContext: RecoveryOwnerContext,
+    ): LocalInsightsRepository = LocalInsightsRepository(database, ownerContext)
 
     @Provides
     @Singleton

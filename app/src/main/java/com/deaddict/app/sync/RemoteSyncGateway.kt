@@ -63,6 +63,8 @@ data class RemoteRecoveryGoalRecord(
 
 data class RemoteTrackingRecord(
     val id: String,
+    val userId: String,
+    val recoveryTrackId: String?,
     val programId: String,
     val kind: String,
     val quantity: Double?,
@@ -76,6 +78,8 @@ data class RemoteTrackingRecord(
 
 data class RemoteRescueRecord(
     val id: String,
+    val userId: String,
+    val recoveryTrackId: String?,
     val programId: String,
     val startedAtEpochMillis: Long,
     val completedAtEpochMillis: Long?,
@@ -172,10 +176,14 @@ class SupabaseRemoteSyncGateway(
     }
 
     override suspend fun upsertTrackingEvent(userId: String, event: TrackingEventEntity) {
+        val recoveryTrackId = checkNotNull(event.recoveryTrackId) {
+            "Cloud-eligible tracking events require a permanent Recovery Track"
+        }
         requireClient().from("tracking_events").upsert(
             CloudTrackingEvent(
                 id = event.id,
                 userId = userId,
+                recoveryTrackId = recoveryTrackId,
                 programId = event.programId,
                 kind = event.kind.name,
                 quantity = event.quantity,
@@ -190,10 +198,14 @@ class SupabaseRemoteSyncGateway(
     }
 
     override suspend fun upsertRescueSession(userId: String, session: RescueSessionEntity) {
+        val recoveryTrackId = checkNotNull(session.recoveryTrackId) {
+            "Cloud-eligible Rescue sessions require a permanent Recovery Track"
+        }
         requireClient().from("rescue_sessions").upsert(
             CloudRescueSession(
                 id = session.id,
                 userId = userId,
+                recoveryTrackId = recoveryTrackId,
                 programId = session.programId,
                 startedAt = session.startedAtEpochMillis.toIsoInstant(),
                 completedAt = session.completedAtEpochMillis?.toIsoInstant(),
@@ -348,6 +360,7 @@ private data class CloudRecoveryGoal(
 private data class CloudTrackingEvent(
     val id: String,
     @SerialName("user_id") val userId: String,
+    @SerialName("recovery_track_id") val recoveryTrackId: String?,
     @SerialName("program_id") val programId: String,
     val kind: String,
     val quantity: Double?,
@@ -360,6 +373,8 @@ private data class CloudTrackingEvent(
 ) {
     fun toRemoteRecord() = RemoteTrackingRecord(
         id = id,
+        userId = userId,
+        recoveryTrackId = recoveryTrackId,
         programId = programId,
         kind = kind,
         quantity = quantity,
@@ -376,6 +391,7 @@ private data class CloudTrackingEvent(
 private data class CloudRescueSession(
     val id: String,
     @SerialName("user_id") val userId: String,
+    @SerialName("recovery_track_id") val recoveryTrackId: String?,
     @SerialName("program_id") val programId: String,
     @SerialName("started_at") val startedAt: String,
     @SerialName("completed_at") val completedAt: String?,
@@ -388,6 +404,8 @@ private data class CloudRescueSession(
 ) {
     fun toRemoteRecord() = RemoteRescueRecord(
         id = id,
+        userId = userId,
+        recoveryTrackId = recoveryTrackId,
         programId = programId,
         startedAtEpochMillis = startedAt.toEpochMillis(),
         completedAtEpochMillis = completedAt?.toEpochMillis(),

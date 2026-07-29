@@ -15,7 +15,17 @@ interface SyncOutboxDao {
         """
         SELECT * FROM sync_outbox
         WHERE state = 'PENDING' AND nextAttemptAtEpochMillis <= :now
-        ORDER BY createdAtEpochMillis
+        ORDER BY
+            CASE aggregateType
+                WHEN 'RECOVERY_TRACK' THEN 0
+                WHEN 'RECOVERY_GOAL' THEN 1
+                WHEN 'ACTIVE_PROGRAM' THEN 2
+                WHEN 'TRACKING_EVENT' THEN 3
+                WHEN 'RESCUE_SESSION' THEN 3
+                ELSE 9
+            END,
+            createdAtEpochMillis,
+            id
         LIMIT :limit
         """,
     )
@@ -37,8 +47,7 @@ interface SyncOutboxDao {
 
     @Query(
         """
-        UPDATE sync_outbox
-        SET state = 'COMPLETED', lastErrorCode = 'SUPERSEDED_BY_DELETE'
+        UPDATE sync_outbox SET state = 'COMPLETED', lastErrorCode = 'SUPERSEDED_BY_DELETE'
         WHERE aggregateType = :aggregateType
           AND aggregateId = :aggregateId
           AND operation = 'UPSERT'

@@ -11,6 +11,7 @@ import com.deaddict.database.entity.SyncOperation
 import com.deaddict.database.entity.SyncOutboxEntity
 import com.deaddict.database.entity.TrackingEventEntity
 import com.deaddict.database.repository.SyncQueue
+import com.deaddict.model.OwnerKey
 import kotlinx.coroutines.CancellationException
 
 interface SyncStore {
@@ -167,18 +168,34 @@ class SyncProcessor(
                         ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
                 )
 
-                SyncAggregateType.TRACKING_EVENT -> remote.upsertTrackingEvent(
-                    userId,
-                    store.trackingEvent(item.aggregateId)
-                        ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
-                )
+                SyncAggregateType.TRACKING_EVENT -> {
+                    val event = store.trackingEvent(item.aggregateId)
+                        ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING")
+                    validateEventOwnership(userId, event.ownerKey, event.recoveryTrackId)
+                    remote.upsertTrackingEvent(userId, event)
+                }
 
-                SyncAggregateType.RESCUE_SESSION -> remote.upsertRescueSession(
-                    userId,
-                    store.rescueSession(item.aggregateId)
-                        ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
-                )
+                SyncAggregateType.RESCUE_SESSION -> {
+                    val session = store.rescueSession(item.aggregateId)
+                        ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING")
+                    validateEventOwnership(userId, session.ownerKey, session.recoveryTrackId)
+                    remote.upsertRescueSession(userId, session)
+                }
             }
+        }
+    }
+
+    private fun validateEventOwnership(
+        userId: String,
+        ownerKey: String,
+        recoveryTrackId: String?,
+    ) {
+        if (recoveryTrackId == null) {
+            throw PermanentSyncFailure("RECOVERY_TRACK_MISSING")
+        }
+        val expectedOwner = OwnerKey.authenticated(userId).value
+        if (ownerKey != expectedOwner) {
+            throw PermanentSyncFailure("ACCOUNT_SCOPE_MISMATCH")
         }
     }
 }
