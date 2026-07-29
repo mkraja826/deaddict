@@ -1,8 +1,13 @@
 package com.deaddict.database.entity
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.deaddict.model.GoalPeriodType
+import com.deaddict.model.RecoveryGoalType
+import com.deaddict.model.RecoveryTrackRole
+import com.deaddict.model.RecoveryTrackStatus
 
 @Entity(
     tableName = "active_programs",
@@ -15,6 +20,94 @@ data class ActiveProgramEntity(
     val archivedAtEpochMillis: Long?,
     val syncState: SyncState,
 )
+
+@Entity(
+    tableName = "recovery_tracks",
+    indices = [
+        Index("ownerKey"),
+        Index("programId"),
+        Index("role"),
+        Index("status"),
+        Index("updatedAtEpochMillis"),
+        Index(value = ["ownerKey", "programId"]),
+    ],
+)
+data class RecoveryTrackEntity(
+    @PrimaryKey val id: String,
+    val ownerKey: String,
+    val programId: String,
+    val displayAlias: String?,
+    val role: RecoveryTrackRole,
+    val status: RecoveryTrackStatus,
+    val startedAtEpochMillis: Long,
+    val pausedAtEpochMillis: Long?,
+    val maintenanceAtEpochMillis: Long?,
+    val archivedAtEpochMillis: Long?,
+    val createdAtEpochMillis: Long,
+    val updatedAtEpochMillis: Long,
+    val revision: Long,
+    val syncState: SyncState,
+) {
+    init {
+        require(id.isNotBlank())
+        require(ownerKey.isNotBlank())
+        require(programId.isNotBlank())
+        require(displayAlias == null || displayAlias.isNotBlank())
+        require(displayAlias == null || displayAlias.length <= 80)
+        require(revision >= 0)
+        require(updatedAtEpochMillis >= createdAtEpochMillis)
+        require(role != RecoveryTrackRole.PRIMARY || status.isPrimaryEligible)
+    }
+}
+
+@Entity(
+    tableName = "recovery_goal_versions",
+    foreignKeys = [
+        ForeignKey(
+            entity = RecoveryTrackEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["recoveryTrackId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index("recoveryTrackId"),
+        Index("effectiveFromEpochMillis"),
+        Index("effectiveUntilEpochMillis"),
+        Index(value = ["recoveryTrackId", "effectiveUntilEpochMillis"]),
+    ],
+)
+data class RecoveryGoalVersionEntity(
+    @PrimaryKey val id: String,
+    val recoveryTrackId: String,
+    val goalType: RecoveryGoalType,
+    val targetValue: Double?,
+    val unitKey: String?,
+    val periodType: GoalPeriodType?,
+    val title: String?,
+    val effectiveFromEpochMillis: Long,
+    val effectiveUntilEpochMillis: Long?,
+    val createdAtEpochMillis: Long,
+    val updatedAtEpochMillis: Long,
+    val revision: Long,
+    val syncState: SyncState,
+) {
+    init {
+        require(id.isNotBlank())
+        require(recoveryTrackId.isNotBlank())
+        require(targetValue == null || targetValue.isFinite())
+        require(targetValue == null || targetValue >= 0)
+        require(targetValue == null || !unitKey.isNullOrBlank())
+        require(title == null || title.isNotBlank())
+        require(title == null || title.length <= 120)
+        require(
+            effectiveUntilEpochMillis == null ||
+                effectiveUntilEpochMillis > effectiveFromEpochMillis,
+        )
+        require(updatedAtEpochMillis >= createdAtEpochMillis)
+        require(revision >= 0)
+    }
+}
 
 @Entity(
     tableName = "tracking_events",
@@ -102,3 +195,6 @@ enum class SyncOperation { UPSERT, DELETE }
 enum class SyncAggregateType { ACTIVE_PROGRAM, TRACKING_EVENT, RESCUE_SESSION }
 enum class TrackingEventKind { ACTIVITY, URGE, CRAVING, SLIP, QUANTITY, TIME, COST }
 enum class RescueOutcome { REDUCED, SAME, INCREASED, NOT_COMPLETED }
+
+private val RecoveryTrackStatus.isPrimaryEligible: Boolean
+    get() = this == RecoveryTrackStatus.ACTIVE || this == RecoveryTrackStatus.MAINTENANCE
