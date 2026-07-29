@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "DeAddict"
-include(":app", ":core:programs", ":core:database")
+include(":app", ":core:programs", ":core:database", ":core:model")
