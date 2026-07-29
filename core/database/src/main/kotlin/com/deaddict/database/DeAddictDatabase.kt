@@ -27,7 +27,7 @@ import com.deaddict.database.entity.TrackingEventEntity
         RescueSessionEntity::class,
         SyncOutboxEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(DatabaseConverters::class)

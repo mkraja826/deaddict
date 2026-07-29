@@ -111,14 +111,27 @@ data class RecoveryGoalVersionEntity(
 
 @Entity(
     tableName = "tracking_events",
+    foreignKeys = [
+        ForeignKey(
+            entity = RecoveryTrackEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["recoveryTrackId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
     indices = [
+        Index("ownerKey"),
+        Index("recoveryTrackId"),
         Index("programId"),
         Index("occurredAtEpochMillis"),
         Index("syncState"),
+        Index(value = ["recoveryTrackId", "occurredAtEpochMillis"]),
     ],
 )
 data class TrackingEventEntity(
     @PrimaryKey val id: String,
+    val ownerKey: String = LEGACY_EVENT_OWNER_KEY,
+    val recoveryTrackId: String? = null,
     val programId: String,
     val kind: TrackingEventKind,
     val quantity: Double?,
@@ -133,6 +146,8 @@ data class TrackingEventEntity(
 ) {
     init {
         require(id.isNotBlank())
+        require(ownerKey.isNotBlank())
+        require(recoveryTrackId == null || recoveryTrackId.isNotBlank())
         require(programId.isNotBlank())
         require(quantity == null || quantity >= 0)
         require(costMinorUnits == null || costMinorUnits >= 0)
@@ -142,10 +157,27 @@ data class TrackingEventEntity(
 
 @Entity(
     tableName = "rescue_sessions",
-    indices = [Index("programId"), Index("startedAtEpochMillis"), Index("syncState")],
+    foreignKeys = [
+        ForeignKey(
+            entity = RecoveryTrackEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["recoveryTrackId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index("ownerKey"),
+        Index("recoveryTrackId"),
+        Index("programId"),
+        Index("startedAtEpochMillis"),
+        Index("syncState"),
+        Index(value = ["recoveryTrackId", "startedAtEpochMillis"]),
+    ],
 )
 data class RescueSessionEntity(
     @PrimaryKey val id: String,
+    val ownerKey: String = LEGACY_EVENT_OWNER_KEY,
+    val recoveryTrackId: String? = null,
     val programId: String,
     val startedAtEpochMillis: Long,
     val completedAtEpochMillis: Long?,
@@ -157,6 +189,9 @@ data class RescueSessionEntity(
     val syncState: SyncState,
 ) {
     init {
+        require(ownerKey.isNotBlank())
+        require(recoveryTrackId == null || recoveryTrackId.isNotBlank())
+        require(programId.isNotBlank())
         require(initialUrge in 1..5)
         require(finalUrge == null || finalUrge in 1..5)
         require(actionKeys.size <= 10)
@@ -201,6 +236,8 @@ enum class SyncAggregateType {
 }
 enum class TrackingEventKind { ACTIVITY, URGE, CRAVING, SLIP, QUANTITY, TIME, COST }
 enum class RescueOutcome { REDUCED, SAME, INCREASED, NOT_COMPLETED }
+
+private const val LEGACY_EVENT_OWNER_KEY = "legacy-local"
 
 private val RecoveryTrackStatus.isPrimaryEligible: Boolean
     get() = this == RecoveryTrackStatus.ACTIVE || this == RecoveryTrackStatus.MAINTENANCE
