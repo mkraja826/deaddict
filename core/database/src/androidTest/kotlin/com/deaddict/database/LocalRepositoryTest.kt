@@ -11,6 +11,8 @@ import com.deaddict.database.repository.EpochClock
 import com.deaddict.database.repository.IdGenerator
 import com.deaddict.database.repository.LocalTrackingRepository
 import com.deaddict.database.repository.NewTrackingEvent
+import com.deaddict.database.repository.RecoveryOwnerContext
+import com.deaddict.database.repository.RecoveryOwnerSelection
 import com.deaddict.database.repository.SyncPolicy
 import com.deaddict.model.OwnerKey
 import com.deaddict.model.RecoveryTrackId
@@ -49,24 +51,7 @@ class LocalRepositoryTest {
         val ids = ArrayDeque(listOf("event-1", "outbox-1"))
         val owner = OwnerKey.authenticated("user-1")
         val trackId = RecoveryTrackId.parse(TRACK_ID)
-        database.recoveryTrackDao().insert(
-            RecoveryTrackEntity(
-                id = trackId.value,
-                ownerKey = owner.value,
-                programId = "gaming",
-                displayAlias = null,
-                role = RecoveryTrackRole.PRIMARY,
-                status = RecoveryTrackStatus.ACTIVE,
-                startedAtEpochMillis = 500L,
-                pausedAtEpochMillis = null,
-                maintenanceAtEpochMillis = null,
-                archivedAtEpochMillis = null,
-                createdAtEpochMillis = 500L,
-                updatedAtEpochMillis = 500L,
-                revision = 0,
-                syncState = SyncState.PENDING,
-            ),
-        )
+        insertTrack(owner, trackId, "gaming")
         val repository = LocalTrackingRepository(
             database = database,
             clock = EpochClock { 2_000L },
@@ -99,6 +84,36 @@ class LocalRepositoryTest {
     }
 
     @Test
+    fun selectedTrackRejectsStalePayloadFromAnotherProgram() = runBlocking {
+        val owner = OwnerKey.guest("profile-1")
+        val selectedTrack = RecoveryTrackId.parse(TRACK_ID)
+        insertTrack(owner, selectedTrack, "gaming")
+        val repository = LocalTrackingRepository(
+            database = database,
+            ownerContext = RecoveryOwnerContext {
+                RecoveryOwnerSelection(owner, selectedTrack)
+            },
+            clock = EpochClock { 2_000L },
+            ids = IdGenerator { "event-stale" },
+        )
+
+        val result = runCatching {
+            repository.record(
+                NewTrackingEvent(
+                    programId = ProgramId.of("caffeine"),
+                    kind = TrackingEventKind.URGE,
+                    urgeIntensity = 4,
+                    occurredAtEpochMillis = 1_000L,
+                ),
+                SyncPolicy.LOCAL_ONLY,
+            )
+        }
+
+        assertTrue(result.isFailure)
+        assertTrue(database.trackingDao().allForTrack(TRACK_ID).isEmpty())
+    }
+
+    @Test
     fun localOnlyWriteNeverCreatesOutboxEntry() = runBlocking {
         val repository = LocalTrackingRepository(
             database = database,
@@ -119,6 +134,27 @@ class LocalRepositoryTest {
         )
 
         assertTrue(database.syncOutboxDao().nextBatch(2_000L, 10).isEmpty())
+    }
+
+    private suspend fun insertTrack(owner: OwnerKey, trackId: RecoveryTrackId, programId: String) {
+        database.recoveryTrackDao().insert(
+            RecoveryTrackEntity(
+                id = trackId.value,
+                ownerKey = owner.value,
+                programId = programId,
+                displayAlias = null,
+                role = RecoveryTrackRole.PRIMARY,
+                status = RecoveryTrackStatus.ACTIVE,
+                startedAtEpochMillis = 500L,
+                pausedAtEpochMillis = null,
+                maintenanceAtEpochMillis = null,
+                archivedAtEpochMillis = null,
+                createdAtEpochMillis = 500L,
+                updatedAtEpochMillis = 500L,
+                revision = 0,
+                syncState = SyncState.PENDING,
+            ),
+        )
     }
 
     private companion object {
