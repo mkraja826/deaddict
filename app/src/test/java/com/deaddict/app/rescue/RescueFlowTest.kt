@@ -12,7 +12,7 @@ class RescueFlowTest {
 
     @Test
     fun `pause cannot be skipped`() {
-        val started = flow.begin(program)
+        val started = flow.begin(TRACK_ID, program, STARTED_AT)
 
         val result = runCatching { flow.continueAfterPause(started) }
 
@@ -20,8 +20,8 @@ class RescueFlowTest {
     }
 
     @Test
-    fun `complete flow preserves learning inputs`() {
-        var state = flow.begin(program)
+    fun `complete flow preserves recovery track ownership and learning inputs`() {
+        var state = flow.begin(TRACK_ID, program, STARTED_AT)
         repeat(60) { state = flow.tick(state) }
         state = flow.continueAfterPause(state)
         state = flow.acknowledgeMotivation(state)
@@ -34,19 +34,32 @@ class RescueFlowTest {
         state = flow.complete(state)
 
         assertEquals(RescueStep.COMPLETE, state.step)
+        assertEquals(TRACK_ID, state.recoveryTrackId)
+        assertEquals(STARTED_AT, state.startedAtEpochMillis)
+        assertEquals(program.id, state.program?.id)
         assertEquals(3, shownActions.size)
         assertEquals("stress", state.triggerKey)
         assertEquals(2, state.initialUrge - state.finalUrge)
     }
 
     @Test
+    fun `invalid ownership cannot begin`() {
+        assertTrue(runCatching { flow.begin("", program, STARTED_AT) }.isFailure)
+        assertTrue(runCatching { flow.begin(TRACK_ID, program, 0L) }.isFailure)
+    }
+
+    @Test
     fun `invalid intensity is rejected`() {
-        var state = flow.begin(program)
+        var state = flow.begin(TRACK_ID, program, STARTED_AT)
         repeat(60) { state = flow.tick(state) }
         state = flow.continueAfterPause(state)
         state = flow.acknowledgeMotivation(state)
 
         assertTrue(runCatching { flow.setInitialUrge(state, 6) }.isFailure)
     }
-}
 
+    private companion object {
+        const val TRACK_ID = "00000000-0000-0000-0000-000000000101"
+        const val STARTED_AT = 1_000L
+    }
+}

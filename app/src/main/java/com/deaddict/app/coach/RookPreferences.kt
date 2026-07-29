@@ -18,7 +18,7 @@ enum class RookTone {
 
 data class RookPreferences(
     val enabled: Boolean = true,
-    val tone: RookTone = RookTone.BRUTAL_BANTER,
+    val tone: RookTone = RookTone.DIRECT,
     val avatarVisible: Boolean = true,
 )
 
@@ -28,7 +28,7 @@ class RookPreferenceStore(private val context: Context) {
             enabled = values[ENABLED] ?: true,
             tone = values[TONE]
                 ?.let { stored -> runCatching { RookTone.valueOf(stored) }.getOrNull() }
-                ?: RookTone.BRUTAL_BANTER,
+                ?: RookTone.DIRECT,
             avatarVisible = values[AVATAR_VISIBLE] ?: true,
         )
     }
