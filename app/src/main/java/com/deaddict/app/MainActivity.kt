@@ -68,8 +68,15 @@ class MainActivity : FragmentActivity() {
                         onTabSelected = viewModel::selectTab,
                         onProgramSelected = viewModel::activateProgram,
                         onTrackSelected = viewModel::selectRecoveryTrack,
+                        onMakePrimary = viewModel::makePrimary,
+                        onPauseTrack = viewModel::pauseTrack,
+                        onResumeTrack = viewModel::resumeTrack,
+                        onMaintenanceTrack = viewModel::moveTrackToMaintenance,
+                        onArchiveTrack = viewModel::archiveTrack,
                         onRookToneChanged = viewModel::setRookTone,
-                        onTrackingRecorded = viewModel::recordTracking,
+                        onTrackingRecorded = { _, entry ->
+                            viewModel.recordTrackingSelected(entry)
+                        },
                         onRequestUsageAccess = {
                             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                         },
