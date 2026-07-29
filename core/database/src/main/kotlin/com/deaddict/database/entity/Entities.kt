@@ -192,7 +192,13 @@ data class SyncOutboxEntity(
 enum class SyncState { LOCAL_ONLY, PENDING, SYNCED }
 enum class OutboxState { PENDING, IN_FLIGHT, COMPLETED, DEAD_LETTER }
 enum class SyncOperation { UPSERT, DELETE }
-enum class SyncAggregateType { ACTIVE_PROGRAM, TRACKING_EVENT, RESCUE_SESSION }
+enum class SyncAggregateType {
+    ACTIVE_PROGRAM,
+    RECOVERY_TRACK,
+    RECOVERY_GOAL,
+    TRACKING_EVENT,
+    RESCUE_SESSION,
+}
 enum class TrackingEventKind { ACTIVITY, URGE, CRAVING, SLIP, QUANTITY, TIME, COST }
 enum class RescueOutcome { REDUCED, SAME, INCREASED, NOT_COMPLETED }
 
