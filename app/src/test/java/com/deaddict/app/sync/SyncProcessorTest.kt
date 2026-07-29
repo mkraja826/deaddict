@@ -1,6 +1,8 @@
 package com.deaddict.app.sync
 
 import com.deaddict.database.entity.ActiveProgramEntity
+import com.deaddict.database.entity.RecoveryGoalVersionEntity
+import com.deaddict.database.entity.RecoveryTrackEntity
 import com.deaddict.database.entity.RescueSessionEntity
 import com.deaddict.database.entity.SyncAggregateType
 import com.deaddict.database.entity.SyncOperation
@@ -8,6 +10,8 @@ import com.deaddict.database.entity.SyncOutboxEntity
 import com.deaddict.database.entity.SyncState
 import com.deaddict.database.entity.TrackingEventEntity
 import com.deaddict.database.entity.TrackingEventKind
+import com.deaddict.model.RecoveryTrackRole
+import com.deaddict.model.RecoveryTrackStatus
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -30,6 +34,22 @@ class SyncProcessorTest {
         assertEquals(listOf("event-1"), remote.uploadedTrackingIds)
         assertEquals(listOf("outbox-1"), store.completedIds)
         assertTrue(store.failures.isEmpty())
+    }
+
+    @Test
+    fun `Recovery Track upload uses its dedicated remote operation`() = runBlocking {
+        val item = recoveryTrackItem()
+        val store = FakeSyncStore(
+            items = mutableListOf(item),
+            track = recoveryTrack(),
+        )
+        val remote = FakeRemoteSyncGateway()
+
+        val result = SyncProcessor(store, remote).runBatch()
+
+        assertEquals(SyncRunResult.SUCCESS, result)
+        assertEquals(listOf("7ebdbd0b-4676-45f1-82cd-e632b3ec6092"), remote.uploadedTrackIds)
+        assertEquals(listOf("outbox-track-1"), store.completedIds)
     }
 
     @Test
@@ -116,7 +136,9 @@ private data class Failure(
 
 private class FakeSyncStore(
     private val items: MutableList<SyncOutboxEntity>,
-    private val tracking: TrackingEventEntity?,
+    private val tracking: TrackingEventEntity? = null,
+    private val track: RecoveryTrackEntity? = null,
+    private val goal: RecoveryGoalVersionEntity? = null,
 ) : SyncStore {
     val claimedIds = mutableListOf<String>()
     val completedIds = mutableListOf<String>()
@@ -132,6 +154,10 @@ private class FakeSyncStore(
     }
 
     override suspend fun program(id: String): ActiveProgramEntity? = null
+
+    override suspend fun recoveryTrack(id: String): RecoveryTrackEntity? = track
+
+    override suspend fun recoveryGoal(id: String): RecoveryGoalVersionEntity? = goal
 
     override suspend fun trackingEvent(id: String): TrackingEventEntity? = tracking
 
@@ -152,11 +178,19 @@ private class FakeRemoteSyncGateway(
 ) : RemoteSyncGateway {
     override val available: Boolean = true
     val uploadedTrackingIds = mutableListOf<String>()
+    val uploadedTrackIds = mutableListOf<String>()
     val deletedRecords = mutableListOf<Pair<SyncAggregateType, String>>()
 
     override suspend fun currentUserId(): String? = userId
 
     override suspend fun upsertProgram(userId: String, program: ActiveProgramEntity) = Unit
+
+    override suspend fun upsertRecoveryTrack(userId: String, track: RecoveryTrackEntity) {
+        if (failWrites) error("offline")
+        uploadedTrackIds += track.id
+    }
+
+    override suspend fun upsertRecoveryGoal(userId: String, goal: RecoveryGoalVersionEntity) = Unit
 
     override suspend fun upsertTrackingEvent(userId: String, event: TrackingEventEntity) {
         if (failWrites) error("offline")
@@ -189,6 +223,17 @@ private fun trackingItem() = SyncOutboxEntity(
     nextAttemptAtEpochMillis = 1_000L,
 )
 
+private fun recoveryTrackItem() = SyncOutboxEntity(
+    id = "outbox-track-1",
+    idempotencyKey = "RECOVERY_TRACK:7ebdbd0b-4676-45f1-82cd-e632b3ec6092:UPSERT:0",
+    aggregateType = SyncAggregateType.RECOVERY_TRACK,
+    aggregateId = "7ebdbd0b-4676-45f1-82cd-e632b3ec6092",
+    operation = SyncOperation.UPSERT,
+    payload = "{}",
+    createdAtEpochMillis = 1_000L,
+    nextAttemptAtEpochMillis = 1_000L,
+)
+
 private fun trackingDeleteItem() = SyncOutboxEntity(
     id = "outbox-delete-1",
     idempotencyKey = "TRACKING_EVENT:event-1:DELETE",
@@ -212,5 +257,22 @@ private fun trackingEvent() = TrackingEventEntity(
     occurredAtEpochMillis = 1_000L,
     createdAtEpochMillis = 1_100L,
     privateNote = "never upload this",
+    syncState = SyncState.PENDING,
+)
+
+private fun recoveryTrack() = RecoveryTrackEntity(
+    id = "7ebdbd0b-4676-45f1-82cd-e632b3ec6092",
+    ownerKey = "user:user-1",
+    programId = "gaming",
+    displayAlias = null,
+    role = RecoveryTrackRole.PRIMARY,
+    status = RecoveryTrackStatus.ACTIVE,
+    startedAtEpochMillis = 1_000L,
+    pausedAtEpochMillis = null,
+    maintenanceAtEpochMillis = null,
+    archivedAtEpochMillis = null,
+    createdAtEpochMillis = 1_000L,
+    updatedAtEpochMillis = 1_000L,
+    revision = 0,
     syncState = SyncState.PENDING,
 )
