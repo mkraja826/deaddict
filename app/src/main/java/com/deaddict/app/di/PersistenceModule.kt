@@ -25,6 +25,8 @@ import com.deaddict.database.repository.LocalProgramRepository
 import com.deaddict.database.repository.LocalRecoveryTrackRepository
 import com.deaddict.database.repository.LocalRescueRepository
 import com.deaddict.database.repository.LocalTrackingRepository
+import com.deaddict.database.repository.RecoveryOwnerContext
+import com.deaddict.database.repository.RecoveryOwnerSelection
 import com.deaddict.programs.DefaultProgramRegistry
 import com.deaddict.programs.ProgramRegistry
 import dagger.Module
@@ -33,6 +35,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.first
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -55,6 +58,16 @@ object PersistenceModule {
     fun ownerSessionStore(
         @ApplicationContext context: Context,
     ): OwnerSessionStore = OwnerSessionStore(context)
+
+    @Provides
+    @Singleton
+    fun recoveryOwnerContext(ownerSessionStore: OwnerSessionStore): RecoveryOwnerContext =
+        RecoveryOwnerContext {
+            val session = ownerSessionStore.state.first()
+            val owner = session.ownerKey
+            val track = session.selectedRecoveryTrackId
+            if (owner == null || track == null) null else RecoveryOwnerSelection(owner, track)
+        }
 
     @Provides
     @Singleton
@@ -94,8 +107,10 @@ object PersistenceModule {
 
     @Provides
     @Singleton
-    fun trackingRepository(database: DeAddictDatabase): LocalTrackingRepository =
-        LocalTrackingRepository(database)
+    fun trackingRepository(
+        database: DeAddictDatabase,
+        ownerContext: RecoveryOwnerContext,
+    ): LocalTrackingRepository = LocalTrackingRepository(database, ownerContext)
 
     @Provides
     @Singleton
@@ -104,8 +119,10 @@ object PersistenceModule {
 
     @Provides
     @Singleton
-    fun rescueRepository(database: DeAddictDatabase): LocalRescueRepository =
-        LocalRescueRepository(database)
+    fun rescueRepository(
+        database: DeAddictDatabase,
+        ownerContext: RecoveryOwnerContext,
+    ): LocalRescueRepository = LocalRescueRepository(database, ownerContext)
 
     @Provides
     @Singleton
