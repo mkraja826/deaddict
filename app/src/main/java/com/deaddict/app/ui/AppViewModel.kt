@@ -14,6 +14,10 @@ import com.deaddict.app.insights.SevenDayInsights
 import com.deaddict.app.notifications.NotificationPreferenceStore
 import com.deaddict.app.notifications.NotificationPreferences
 import com.deaddict.app.notifications.NotificationScheduler
+import com.deaddict.app.onboarding.OnboardingCoordinator
+import com.deaddict.app.onboarding.OnboardingDraft
+import com.deaddict.app.onboarding.OnboardingDraftStore
+import com.deaddict.app.onboarding.OnboardingUsageMode
 import com.deaddict.app.privacy.AccountDeletionCoordinator
 import com.deaddict.app.privacy.PrivacyPreferenceStore
 import com.deaddict.app.privacy.PrivacyPreferences
@@ -33,6 +37,7 @@ import com.deaddict.database.repository.NewRescueSession
 import com.deaddict.database.repository.NewTrackingEvent
 import com.deaddict.database.repository.RecoveryGoalDraft
 import com.deaddict.database.repository.SyncPolicy
+import com.deaddict.model.GoalPeriodType
 import com.deaddict.model.OwnerKey
 import com.deaddict.model.RecoveryGoalType
 import com.deaddict.model.RecoveryTrack
@@ -40,7 +45,6 @@ import com.deaddict.model.RecoveryTrackId
 import com.deaddict.model.RecoveryTrackRole
 import com.deaddict.model.RecoveryTrackStatus
 import com.deaddict.programs.ProgramDefinition
-import com.deaddict.programs.ProgramId
 import com.deaddict.programs.ProgramRegistry
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -59,12 +63,15 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class AppTab {
-    HOME,
-    TRACK,
-    RESCUE,
-    INSIGHTS,
-    PROFILE,
+enum class AppTab(
+    val label: String,
+    val icon: String,
+) {
+    TODAY("Today", "●"),
+    TRACKS("Tracks", "+"),
+    TOOLS("Tools", "◉"),
+    INSIGHTS("Insights", "↗"),
+    YOU("You", "○"),
 }
 
 data class RecoveryTrackUi(
@@ -81,12 +88,11 @@ data class RecoveryTrackUi(
 data class AppUiState(
     val isLoading: Boolean = true,
     val ownerKey: String? = null,
-    val selectedTab: AppTab = AppTab.HOME,
+    val selectedTab: AppTab = AppTab.TODAY,
     val availablePrograms: List<ProgramDefinition> = emptyList(),
     val recoveryTracks: List<RecoveryTrackUi> = emptyList(),
     val selectedRecoveryTrackId: String? = null,
-    val activePrograms: List<ProgramDefinition> = emptyList(),
-    val selectedProgramId: String? = null,
+    val onboarding: OnboardingDraft = OnboardingDraft(),
     val rookPreferences: RookPreferences = RookPreferences(),
     val message: String? = null,
     val usageAccessGranted: Boolean = false,
@@ -118,11 +124,18 @@ private data class OwnerTracks(
     val tracks: List<RecoveryTrack>,
 )
 
+private data class OnboardingCoachDeletion(
+    val onboarding: OnboardingDraft,
+    val coach: RookPreferences,
+    val deleting: Boolean,
+)
+
 @HiltViewModel
 class AppViewModel @Inject constructor(
     registry: ProgramRegistry,
     private val authGateway: AuthGateway,
     private val ownerSessionStore: OwnerSessionStore,
+    private val onboardingDraftStore: OnboardingDraftStore,
     private val recoveryTrackRepository: LocalRecoveryTrackRepository,
     private val trackingRepository: LocalTrackingRepository,
     private val digitalUsageRepository: DigitalUsageRepository,
@@ -136,7 +149,7 @@ class AppViewModel @Inject constructor(
     private val billingManager: PlayBillingManager,
     private val accountDeletionCoordinator: AccountDeletionCoordinator,
 ) : ViewModel() {
-    private val selectedTab = MutableStateFlow(AppTab.HOME)
+    private val selectedTab = MutableStateFlow(AppTab.TODAY)
     private val message = MutableStateFlow<String?>(null)
     private val usageAccessGranted = MutableStateFlow(false)
     private val dailyUsage = MutableStateFlow<DailyUsageEstimate?>(null)
@@ -144,40 +157,37 @@ class AppViewModel @Inject constructor(
     private val rescueState = MutableStateFlow(RescueFlowState())
     private val insights = MutableStateFlow<SevenDayInsights?>(null)
     private val accountDeletionInProgress = MutableStateFlow(false)
-    private var rescueStartedAtMillis: Long = 0L
-    private var rescueRecoveryTrackId: String? = null
+    private val onboardingCoordinator = OnboardingCoordinator()
 
-    private val privacyPreferences = privacyPreferenceStore.preferences
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = PrivacyPreferences(),
-        )
-    private val rookPreferences = rookPreferenceStore.preferences
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = RookPreferences(),
-        )
-    private val notificationPreferences = notificationPreferenceStore.preferences
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = NotificationPreferences(),
-        )
+    private val privacyPreferences = privacyPreferenceStore.preferences.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = PrivacyPreferences(),
+    )
+    private val rookPreferences = rookPreferenceStore.preferences.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = RookPreferences(),
+    )
+    private val notificationPreferences = notificationPreferenceStore.preferences.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = NotificationPreferences(),
+    )
+    private val onboardingDraft = onboardingDraftStore.draft.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = OnboardingDraft(),
+    )
 
     private val definitions = registry.all()
     private val definitionsById = definitions.associateBy { it.id.value }
 
     private val ownerTracks = ownerSessionStore.state
         .flatMapLatest { session ->
-            val owner = session.ownerKey
-            if (owner == null) {
-                flowOf(OwnerTracks(session, emptyList()))
-            } else {
-                recoveryTrackRepository.observeOpen(owner)
-                    .map { tracks -> OwnerTracks(session, tracks) }
-            }
+            session.ownerKey?.let { owner ->
+                recoveryTrackRepository.observeOpen(owner).map { OwnerTracks(session, it) }
+            } ?: flowOf(OwnerTracks(session, emptyList()))
         }
         .stateIn(
             scope = viewModelScope,
@@ -185,11 +195,7 @@ class AppViewModel @Inject constructor(
             initialValue = OwnerTracks(OwnerSessionState(), emptyList()),
         )
 
-    private val primaryState = combine(
-        ownerTracks,
-        selectedTab,
-        message,
-    ) { current, tab, currentMessage ->
+    private val primaryState = combine(ownerTracks, selectedTab, message) { current, tab, currentMessage ->
         val mapped = current.tracks.mapNotNull { track ->
             definitionsById[track.programId.value]?.let { definition ->
                 RecoveryTrackUi(
@@ -202,19 +208,9 @@ class AppViewModel @Inject constructor(
             }
         }
         val selectedId = resolveSelectedRecoveryTrackId(
-            tracks = mapped.map { track ->
-                RecoveryTrackSelectionCandidate(track.id, track.role, track.status)
-            },
+            tracks = mapped.map { RecoveryTrackSelectionCandidate(it.id, it.role, it.status) },
             requestedId = current.session.selectedRecoveryTrackId?.value,
         )
-        val selected = mapped.firstOrNull { it.id == selectedId }
-
-        // Temporary compatibility adapter for screens that still receive ProgramDefinition lists.
-        val legacyPrograms = buildList {
-            selected?.program?.let(::add)
-            mapped.filterNot { it.id == selectedId }.mapTo(this) { it.program }
-        }
-
         AppUiState(
             isLoading = current.session.ownerKey == null,
             ownerKey = current.session.ownerKey?.value,
@@ -222,8 +218,6 @@ class AppViewModel @Inject constructor(
             availablePrograms = definitions,
             recoveryTracks = mapped,
             selectedRecoveryTrackId = selectedId,
-            activePrograms = legacyPrograms,
-            selectedProgramId = selected?.program?.id?.value,
             message = currentMessage,
         )
     }
@@ -243,25 +237,27 @@ class AppViewModel @Inject constructor(
         )
     }
 
-    private val coachAndDeletion = combine(
+    private val onboardingCoachDeletion = combine(
+        onboardingDraft,
         rookPreferences,
         accountDeletionInProgress,
-    ) { coach, deleting -> coach to deleting }
+    ) { draft, coach, deleting -> OnboardingCoachDeletion(draft, coach, deleting) }
 
     val state: StateFlow<AppUiState> = combine(
         stateWithoutInsights,
         insights,
         privacyPreferences,
         billingManager.state,
-        coachAndDeletion,
-    ) { base, currentInsights, privacy, billing, coachDeletion ->
+        onboardingCoachDeletion,
+    ) { base, currentInsights, privacy, billing, combined ->
         base.copy(
+            onboarding = combined.onboarding,
             insights = currentInsights,
             privacyPreferences = privacy,
-            rookPreferences = coachDeletion.first,
+            rookPreferences = combined.coach,
             billing = billing,
             accountDeletionAvailable = accountDeletionCoordinator.available,
-            accountDeletionInProgress = coachDeletion.second,
+            accountDeletionInProgress = combined.deleting,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -286,13 +282,7 @@ class AppViewModel @Inject constructor(
                 val owner = current.session.ownerKey ?: return@collectLatest
                 val candidates = current.tracks
                     .filter { definitionsById.containsKey(it.programId.value) }
-                    .map { track ->
-                        RecoveryTrackSelectionCandidate(
-                            id = track.id.value,
-                            role = track.role,
-                            status = track.status,
-                        )
-                    }
+                    .map { RecoveryTrackSelectionCandidate(it.id.value, it.role, it.status) }
                 val resolved = resolveSelectedRecoveryTrackId(
                     tracks = candidates,
                     requestedId = current.session.selectedRecoveryTrackId?.value,
@@ -321,11 +311,98 @@ class AppViewModel @Inject constructor(
         if (state.value.recoveryTracks.none { it.id == parsed.value }) return
         viewModelScope.launch {
             ownerSessionStore.selectRecoveryTrack(owner, parsed)
-            rescueState.value = rescueFlow.reset()
-            rescueRecoveryTrackId = null
+            if (rescueState.value.recoveryTrackId != parsed.value) {
+                rescueState.value = rescueFlow.reset()
+            }
             insights.value = null
             message.value = null
             if (selectedTab.value == AppTab.INSIGHTS) refreshInsights(parsed.value)
+        }
+    }
+
+    fun onboardingNext() {
+        viewModelScope.launch {
+            runCatching { onboardingDraftStore.update(onboardingCoordinator::next) }
+                .onFailure { message.value = "Complete this step before continuing." }
+        }
+    }
+
+    fun onboardingBack() {
+        viewModelScope.launch { onboardingDraftStore.update(onboardingCoordinator::previous) }
+    }
+
+    fun setOnboardingPrivacyAccepted(accepted: Boolean) = updateOnboarding {
+        it.copy(privacyAccepted = accepted)
+    }
+
+    fun setOnboardingUsageMode(mode: OnboardingUsageMode) = updateOnboarding {
+        it.copy(usageMode = mode)
+    }
+
+    fun setOnboardingMotivation(value: String) = updateOnboarding {
+        it.copy(motivation = value.take(240))
+    }
+
+    fun setOnboardingPrimaryProgram(program: ProgramDefinition) = updateOnboarding {
+        it.copy(primaryProgramId = program.id.value)
+    }
+
+    fun acknowledgeOnboardingSafety(acknowledged: Boolean) = updateOnboarding {
+        it.copy(safetyAcknowledged = acknowledged)
+    }
+
+    fun setOnboardingGoal(goalType: RecoveryGoalType) = updateOnboarding {
+        it.copy(
+            goalType = goalType,
+            goalTarget = if (goalType.requiresNumericTarget()) it.goalTarget else null,
+            goalUnit = if (goalType.requiresNumericTarget()) it.goalUnit else null,
+        )
+    }
+
+    fun setOnboardingGoalDetails(target: Double?, unit: String?) = updateOnboarding {
+        it.copy(goalTarget = target, goalUnit = unit?.trim()?.takeIf(String::isNotEmpty))
+    }
+
+    fun setOnboardingBaseline(value: Double?) = updateOnboarding { it.copy(baselineValue = value) }
+
+    fun toggleOnboardingTrigger(trigger: String) = updateOnboarding { draft ->
+        val next = draft.triggerKeys.toMutableSet().apply {
+            if (!add(trigger)) remove(trigger)
+        }
+        draft.copy(triggerKeys = next)
+    }
+
+    fun setOnboardingRookTone(tone: RookTone) = updateOnboarding { it.copy(rookTone = tone) }
+
+    fun setOnboardingNotifications(enabled: Boolean) = updateOnboarding {
+        it.copy(notificationsEnabled = enabled)
+    }
+
+    fun completeOnboarding() {
+        val owner = currentOwner() ?: return
+        viewModelScope.launch {
+            runCatching {
+                val draft = onboardingDraftStore.current()
+                require(onboardingCoordinator.canContinue(draft)) { "Onboarding summary is incomplete" }
+                val program = checkNotNull(draft.primaryProgramId?.let(definitionsById::get)) {
+                    "Primary program is unavailable"
+                }
+                val goal = checkNotNull(draft.goalType) { "Goal is required" }
+                val trackId = recoveryTrackRepository.create(
+                    ownerKey = owner,
+                    programId = program.id,
+                    initialGoal = draft.toGoalDraft(goal),
+                    syncPolicy = syncPolicyFor(owner),
+                )
+                ownerSessionStore.selectRecoveryTrack(owner, trackId)
+                rookPreferenceStore.setTone(draft.rookTone)
+                onboardingDraftStore.reset()
+                selectedTab.value = AppTab.TODAY
+            }.onSuccess {
+                message.value = "Your private Recovery Track is ready."
+            }.onFailure {
+                message.value = "Setup could not be completed. Your answers remain saved."
+            }
         }
     }
 
@@ -337,9 +414,7 @@ class AppViewModel @Inject constructor(
         viewModelScope.launch {
             val granted = digitalUsageRepository.hasUsageAccess()
             usageAccessGranted.value = granted
-            dailyUsage.value = if (
-                granted && privacyPreferences.value.usageMonitoringEnabled
-            ) {
+            dailyUsage.value = if (granted && privacyPreferences.value.usageMonitoringEnabled) {
                 withContext(Dispatchers.Default) { digitalUsageRepository.estimateDay() }
             } else {
                 null
@@ -349,9 +424,11 @@ class AppViewModel @Inject constructor(
 
     fun beginRescue() {
         val track = state.value.selectedRecoveryTrack ?: return
-        rescueRecoveryTrackId = track.id
-        rescueStartedAtMillis = System.currentTimeMillis()
-        rescueState.value = rescueFlow.begin(track.program)
+        rescueState.value = rescueFlow.begin(
+            recoveryTrackId = track.id,
+            program = track.program,
+            startedAtEpochMillis = System.currentTimeMillis(),
+        )
     }
 
     fun tickRescuePause() {
@@ -386,15 +463,19 @@ class AppViewModel @Inject constructor(
     }
 
     fun completeRescue() {
-        val completed = rescueFlow.complete(rescueState.value)
+        val completed = runCatching { rescueFlow.complete(rescueState.value) }.getOrNull() ?: return
         rescueState.value = completed
+        val owner = currentOwner() ?: return
         val program = completed.program ?: return
-        val trackId = rescueRecoveryTrackId ?: return
+        val trackId = completed.recoveryTrackId
+            ?.let { runCatching { RecoveryTrackId.parse(it) }.getOrNull() }
+            ?: return
+        val startedAt = completed.startedAtEpochMillis ?: return
         viewModelScope.launch {
             rescueRepository.record(
                 NewRescueSession(
                     programId = program.id,
-                    startedAtEpochMillis = rescueStartedAtMillis,
+                    startedAtEpochMillis = startedAt,
                     completedAtEpochMillis = System.currentTimeMillis(),
                     initialUrge = completed.initialUrge,
                     finalUrge = completed.finalUrge,
@@ -405,26 +486,24 @@ class AppViewModel @Inject constructor(
                         completed.finalUrge == completed.initialUrge -> RescueOutcome.SAME
                         else -> RescueOutcome.INCREASED
                     },
+                    ownerKey = owner,
+                    recoveryTrackId = trackId,
                 ),
-                syncPolicyFor(currentOwner()),
+                syncPolicyFor(owner),
             )
-            refreshInsights(trackId)
+            refreshInsights(trackId.value)
         }
     }
 
     fun resetRescue() {
-        rescueRecoveryTrackId = null
         rescueState.value = rescueFlow.reset()
     }
 
     fun setDailyNotificationsEnabled(enabled: Boolean) {
         viewModelScope.launch {
             notificationPreferenceStore.setDailyEnabled(enabled)
-            if (enabled) {
-                notificationScheduler.scheduleDailyCheckIn()
-            } else {
-                notificationScheduler.cancelDailyCheckIn()
-            }
+            if (enabled) notificationScheduler.scheduleDailyCheckIn()
+            else notificationScheduler.cancelDailyCheckIn()
         }
     }
 
@@ -441,7 +520,7 @@ class AppViewModel @Inject constructor(
                 )
             }.onSuccess { trackId ->
                 ownerSessionStore.selectRecoveryTrack(owner, trackId)
-                selectedTab.value = AppTab.HOME
+                selectedTab.value = AppTab.TRACKS
                 message.value = if (hadTracks) {
                     "Another recovery track was added. Its progress remains independent."
                 } else {
@@ -484,7 +563,9 @@ class AppViewModel @Inject constructor(
     }
 
     fun recordTrackingSelected(entry: TrackingEntry) {
+        val owner = currentOwner() ?: return
         val track = state.value.selectedRecoveryTrack ?: return
+        val trackId = runCatching { RecoveryTrackId.parse(track.id) }.getOrNull() ?: return
         viewModelScope.launch {
             runCatching {
                 val quantity = when (entry.kind) {
@@ -500,7 +581,7 @@ class AppViewModel @Inject constructor(
                 }
                 trackingRepository.record(
                     input = NewTrackingEvent(
-                        programId = ProgramId.of(track.program.id.value),
+                        programId = track.program.id,
                         kind = entry.kind,
                         quantity = quantity,
                         unit = when (entry.kind) {
@@ -512,8 +593,10 @@ class AppViewModel @Inject constructor(
                         urgeIntensity = entry.urgeIntensity,
                         triggerKey = entry.triggerKey,
                         occurredAtEpochMillis = System.currentTimeMillis(),
+                        ownerKey = owner,
+                        recoveryTrackId = trackId,
                     ),
-                    syncPolicy = syncPolicyFor(currentOwner()),
+                    syncPolicy = syncPolicyFor(owner),
                 )
             }.onSuccess {
                 message.value = when (entry.kind) {
@@ -529,13 +612,11 @@ class AppViewModel @Inject constructor(
     }
 
     fun refreshInsights(trackId: String? = null) {
-        val track = trackId
-            ?.let { requested -> state.value.recoveryTracks.firstOrNull { it.id == requested } }
-            ?: state.value.selectedRecoveryTrack
-            ?: return
+        val resolved = trackId ?: state.value.selectedRecoveryTrackId ?: return
+        val parsed = runCatching { RecoveryTrackId.parse(resolved) }.getOrNull() ?: return
         viewModelScope.launch {
             insights.value = withContext(Dispatchers.Default) {
-                insightsRepository.sevenDays(track.program.id)
+                insightsRepository.sevenDays(parsed)
             }
         }
     }
@@ -570,9 +651,10 @@ class AppViewModel @Inject constructor(
             notificationPreferenceStore.setDailyEnabled(false)
             notificationScheduler.cancelDailyCheckIn()
             owner?.let { ownerSessionStore.selectRecoveryTrack(it, null) }
-            rescueRecoveryTrackId = null
+            onboardingDraftStore.reset()
             rescueState.value = rescueFlow.reset()
             insights.value = null
+            selectedTab.value = AppTab.TODAY
             message.value = "Local recovery data deleted."
         }
     }
@@ -581,21 +663,21 @@ class AppViewModel @Inject constructor(
         if (accountDeletionInProgress.value) return
         viewModelScope.launch {
             accountDeletionInProgress.value = true
-            runCatching {
-                accountDeletionCoordinator.deleteAccount()
-            }.onSuccess { result ->
-                rescueRecoveryTrackId = null
-                rescueState.value = rescueFlow.reset()
-                insights.value = null
-                selectedTab.value = AppTab.HOME
-                message.value = if (result.localCleanupComplete) {
-                    "Account and recovery data deleted."
-                } else {
-                    "Account deleted. Some local cleanup could not finish; clear DeAddict app storage before using it again."
+            runCatching { accountDeletionCoordinator.deleteAccount() }
+                .onSuccess { result ->
+                    onboardingDraftStore.reset()
+                    rescueState.value = rescueFlow.reset()
+                    insights.value = null
+                    selectedTab.value = AppTab.TODAY
+                    message.value = if (result.localCleanupComplete) {
+                        "Account and recovery data deleted."
+                    } else {
+                        "Account deleted. Some local cleanup could not finish; clear DeAddict app storage before using it again."
+                    }
                 }
-            }.onFailure {
-                message.value = "Account deletion could not be confirmed. Check whether you can still sign in before retrying."
-            }
+                .onFailure {
+                    message.value = "Account deletion could not be confirmed. Check whether you can still sign in before retrying."
+                }
             accountDeletionInProgress.value = false
         }
     }
@@ -604,6 +686,10 @@ class AppViewModel @Inject constructor(
 
     fun purchasePlus(activity: Activity, offerToken: String) {
         billingManager.launchPurchase(activity, offerToken)
+    }
+
+    private fun updateOnboarding(transform: (OnboardingDraft) -> OnboardingDraft) {
+        viewModelScope.launch { onboardingDraftStore.update(transform) }
     }
 
     private suspend fun reconcileOwnerScope(owner: OwnerKey) {
@@ -645,4 +731,33 @@ class AppViewModel @Inject constructor(
 
     private fun syncPolicyFor(owner: OwnerKey?): SyncPolicy =
         if (owner?.isAuthenticated == true) SyncPolicy.CLOUD_ELIGIBLE else SyncPolicy.LOCAL_ONLY
+
+    private fun OnboardingDraft.toGoalDraft(goalType: RecoveryGoalType): RecoveryGoalDraft =
+        RecoveryGoalDraft(
+            goalType = goalType,
+            targetValue = if (goalType.requiresNumericTarget()) goalTarget else null,
+            unitKey = if (goalType.requiresNumericTarget()) goalUnit else null,
+            periodType = when (goalType) {
+                RecoveryGoalType.WEEKLY_LIMIT,
+                RecoveryGoalType.SPENDING_LIMIT,
+                -> GoalPeriodType.WEEK
+
+                RecoveryGoalType.DAILY_LIMIT,
+                RecoveryGoalType.REDUCE_QUANTITY,
+                RecoveryGoalType.TIME_LIMIT,
+                RecoveryGoalType.DELAY_FIRST_USE,
+                -> GoalPeriodType.DAY
+
+                else -> null
+            },
+        )
+
+    private fun RecoveryGoalType.requiresNumericTarget(): Boolean = this in setOf(
+        RecoveryGoalType.REDUCE_QUANTITY,
+        RecoveryGoalType.DAILY_LIMIT,
+        RecoveryGoalType.WEEKLY_LIMIT,
+        RecoveryGoalType.TIME_LIMIT,
+        RecoveryGoalType.SPENDING_LIMIT,
+        RecoveryGoalType.DELAY_FIRST_USE,
+    )
 }
