@@ -15,7 +15,8 @@ import io.github.jan.supabase.postgrest.Postgrest
 
 class SupabaseAuthGateway(
     private val client: SupabaseClient?,
-    private val onAuthenticated: () -> Unit = {},
+    private val onAuthenticated: suspend (AuthenticatedUser) -> Unit = {},
+    private val onSignedOut: suspend () -> Unit = {},
 ) : AuthGateway {
     override val availability: AuthAvailability =
         if (client == null) {
@@ -41,7 +42,9 @@ class SupabaseAuthGateway(
             email = email.value,
             token = otp.value,
         )
-        return auth.currentUserOrNull().requireUser().also { onAuthenticated() }
+        val user = auth.currentUserOrNull().requireUser()
+        onAuthenticated(user)
+        return user
     }
 
     override suspend fun signInWithGoogle(token: GoogleIdToken): AuthenticatedUser {
@@ -51,7 +54,9 @@ class SupabaseAuthGateway(
             provider = Google
             nonce = token.rawNonce
         }
-        return auth.currentUserOrNull().requireUser().also { onAuthenticated() }
+        val user = auth.currentUserOrNull().requireUser()
+        onAuthenticated(user)
+        return user
     }
 
     override suspend fun currentUser(): AuthenticatedUser? =
@@ -59,6 +64,7 @@ class SupabaseAuthGateway(
 
     override suspend fun signOut() {
         requireClient().auth.signOut()
+        onSignedOut()
     }
 
     private fun requireClient(): SupabaseClient =

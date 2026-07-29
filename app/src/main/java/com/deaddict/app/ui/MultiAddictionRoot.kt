@@ -32,6 +32,8 @@ import com.deaddict.app.coach.RookContext
 import com.deaddict.app.coach.RookMessageEngine
 import com.deaddict.app.coach.RookMoment
 import com.deaddict.app.coach.RookTone
+import com.deaddict.model.RecoveryTrackRole
+import com.deaddict.model.RecoveryTrackStatus
 import com.deaddict.programs.ProgramDefinition
 import com.deaddict.programs.SafetyTier
 
@@ -42,6 +44,11 @@ fun MultiAddictionDeAddictRoot(
     onTabSelected: (AppTab) -> Unit,
     onProgramSelected: (ProgramDefinition) -> Unit,
     onTrackSelected: (String) -> Unit,
+    onMakePrimary: (String) -> Unit,
+    onPauseTrack: (String) -> Unit,
+    onResumeTrack: (String) -> Unit,
+    onMaintenanceTrack: (String) -> Unit,
+    onArchiveTrack: (String) -> Unit,
     onRookToneChanged: (RookTone) -> Unit,
     onTrackingRecorded: (ProgramDefinition, TrackingEntry) -> Unit,
     onRequestUsageAccess: () -> Unit,
@@ -70,12 +77,17 @@ fun MultiAddictionDeAddictRoot(
             isAppUnlocked &&
             !state.isLoading &&
             !state.requiresOnboarding &&
-            state.activePrograms.isNotEmpty()
+            state.recoveryTracks.isNotEmpty()
         ) {
             RecoveryTrackAndRookHeader(
                 state = state,
                 onProgramSelected = onProgramSelected,
                 onTrackSelected = onTrackSelected,
+                onMakePrimary = onMakePrimary,
+                onPauseTrack = onPauseTrack,
+                onResumeTrack = onResumeTrack,
+                onMaintenanceTrack = onMaintenanceTrack,
+                onArchiveTrack = onArchiveTrack,
                 onRookToneChanged = onRookToneChanged,
             )
         }
@@ -117,12 +129,18 @@ private fun RecoveryTrackAndRookHeader(
     state: AppUiState,
     onProgramSelected: (ProgramDefinition) -> Unit,
     onTrackSelected: (String) -> Unit,
+    onMakePrimary: (String) -> Unit,
+    onPauseTrack: (String) -> Unit,
+    onResumeTrack: (String) -> Unit,
+    onMaintenanceTrack: (String) -> Unit,
+    onArchiveTrack: (String) -> Unit,
     onRookToneChanged: (RookTone) -> Unit,
 ) {
-    val selected = state.activePrograms.firstOrNull() ?: return
-    val activeIds = state.activePrograms.mapTo(mutableSetOf()) { it.id.value }
-    val availablePrograms = state.availablePrograms.filterNot { it.id.value in activeIds }
+    val selected = state.selectedRecoveryTrack ?: state.recoveryTracks.firstOrNull() ?: return
+    val openProgramIds = state.recoveryTracks.mapTo(mutableSetOf()) { it.program.id.value }
+    val availablePrograms = state.availablePrograms.filterNot { it.id.value in openProgramIds }
     var showAddTrackDialog by remember { mutableStateOf(false) }
+    var archiveCandidate by remember { mutableStateOf<RecoveryTrackUi?>(null) }
 
     val rookMessage = if (state.rookPreferences.enabled) {
         RookMessageEngine.message(
@@ -134,10 +152,10 @@ private fun RecoveryTrackAndRookHeader(
                     AppTab.INSIGHTS -> RookMoment.INSIGHTS
                     AppTab.PROFILE -> RookMoment.TODAY
                 },
-                programName = selected.displayName,
-                activeTrackCount = state.activePrograms.size,
+                programName = selected.title,
+                activeTrackCount = state.recoveryTracks.size,
                 requestedTone = state.rookPreferences.tone,
-                medicallyHighRisk = selected.safety.tier == SafetyTier.MEDICALLY_HIGH_RISK,
+                medicallyHighRisk = selected.program.safety.tier == SafetyTier.MEDICALLY_HIGH_RISK,
                 slipRecorded = state.message?.contains("slip", ignoreCase = true) == true,
             ),
         )
@@ -157,11 +175,22 @@ private fun RecoveryTrackAndRookHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(
-                    text = if (state.activePrograms.size == 1) "Recovery track" else "Recovery tracks",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                Column {
+                    Text(
+                        text = if (state.recoveryTracks.size == 1) {
+                            "Recovery track"
+                        } else {
+                            "Recovery tracks"
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "${selected.role.label()} · ${selected.status.label()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (availablePrograms.isNotEmpty()) {
                     TextButton(onClick = { showAddTrackDialog = true }) {
                         Text("Add track")
@@ -175,16 +204,33 @@ private fun RecoveryTrackAndRookHeader(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                state.activePrograms.forEachIndexed { index, program ->
+                state.recoveryTracks.forEach { track ->
                     FilterChip(
-                        selected = index == 0,
-                        onClick = { onTrackSelected(program.id.value) },
-                        label = { Text(program.displayName) },
+                        selected = track.id == state.selectedRecoveryTrackId,
+                        onClick = { onTrackSelected(track.id) },
+                        label = {
+                            Text(
+                                if (track.role == RecoveryTrackRole.PRIMARY) {
+                                    "${track.title} · Primary"
+                                } else {
+                                    track.title
+                                },
+                            )
+                        },
                     )
                 }
             }
 
-            rookMessage?.let { message ->
+            TrackLifecycleActions(
+                track = selected,
+                onMakePrimary = onMakePrimary,
+                onPauseTrack = onPauseTrack,
+                onResumeTrack = onResumeTrack,
+                onMaintenanceTrack = onMaintenanceTrack,
+                onArchiveRequested = { archiveCandidate = it },
+            )
+
+            rookMessage?.let { rook ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -196,7 +242,7 @@ private fun RecoveryTrackAndRookHeader(
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            text = message.text,
+                            text = rook.text,
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -264,4 +310,84 @@ private fun RecoveryTrackAndRookHeader(
             },
         )
     }
+
+    archiveCandidate?.let { track ->
+        AlertDialog(
+            onDismissRequest = { archiveCandidate = null },
+            title = { Text("Archive ${track.title}?") },
+            text = {
+                Text("Its history will be preserved. Continuing later will create a new recovery journey.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        archiveCandidate = null
+                        onArchiveTrack(track.id)
+                    },
+                ) {
+                    Text("Archive")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { archiveCandidate = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun TrackLifecycleActions(
+    track: RecoveryTrackUi,
+    onMakePrimary: (String) -> Unit,
+    onPauseTrack: (String) -> Unit,
+    onResumeTrack: (String) -> Unit,
+    onMaintenanceTrack: (String) -> Unit,
+    onArchiveRequested: (RecoveryTrackUi) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (
+            track.role != RecoveryTrackRole.PRIMARY &&
+            track.status in setOf(RecoveryTrackStatus.ACTIVE, RecoveryTrackStatus.MAINTENANCE)
+        ) {
+            TextButton(onClick = { onMakePrimary(track.id) }) {
+                Text("Make primary")
+            }
+        }
+        when (track.status) {
+            RecoveryTrackStatus.ACTIVE -> {
+                TextButton(onClick = { onPauseTrack(track.id) }) { Text("Pause") }
+                TextButton(onClick = { onMaintenanceTrack(track.id) }) { Text("Maintenance") }
+            }
+            RecoveryTrackStatus.PAUSED -> {
+                TextButton(onClick = { onResumeTrack(track.id) }) { Text("Resume") }
+            }
+            RecoveryTrackStatus.MAINTENANCE -> {
+                TextButton(onClick = { onResumeTrack(track.id) }) { Text("Return active") }
+                TextButton(onClick = { onPauseTrack(track.id) }) { Text("Pause") }
+            }
+            RecoveryTrackStatus.ARCHIVED -> Unit
+        }
+        if (track.status != RecoveryTrackStatus.ARCHIVED) {
+            TextButton(onClick = { onArchiveRequested(track) }) { Text("Archive") }
+        }
+    }
+}
+
+private fun RecoveryTrackRole.label(): String = when (this) {
+    RecoveryTrackRole.PRIMARY -> "Primary"
+    RecoveryTrackRole.SUPPORTING -> "Supporting"
+}
+
+private fun RecoveryTrackStatus.label(): String = when (this) {
+    RecoveryTrackStatus.ACTIVE -> "Active"
+    RecoveryTrackStatus.PAUSED -> "Paused"
+    RecoveryTrackStatus.MAINTENANCE -> "Maintenance"
+    RecoveryTrackStatus.ARCHIVED -> "Archived"
 }
