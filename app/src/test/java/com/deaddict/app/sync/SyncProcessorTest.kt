@@ -48,8 +48,44 @@ class SyncProcessorTest {
         val result = SyncProcessor(store, remote).runBatch()
 
         assertEquals(SyncRunResult.SUCCESS, result)
-        assertEquals(listOf("7ebdbd0b-4676-45f1-82cd-e632b3ec6092"), remote.uploadedTrackIds)
+        assertEquals(listOf(TRACK_ID), remote.uploadedTrackIds)
         assertEquals(listOf("outbox-track-1"), store.completedIds)
+    }
+
+    @Test
+    fun `tracking row without Recovery Track is dead lettered`() = runBlocking {
+        val store = FakeSyncStore(
+            items = mutableListOf(trackingItem()),
+            tracking = trackingEvent().copy(recoveryTrackId = null),
+        )
+        val remote = FakeRemoteSyncGateway()
+
+        val result = SyncProcessor(store, remote).runBatch()
+
+        assertEquals(SyncRunResult.IDLE, result)
+        assertEquals(
+            listOf(Failure("outbox-1", "RECOVERY_TRACK_MISSING", permanent = true)),
+            store.failures,
+        )
+        assertTrue(remote.uploadedTrackingIds.isEmpty())
+    }
+
+    @Test
+    fun `tracking row from another account is dead lettered`() = runBlocking {
+        val store = FakeSyncStore(
+            items = mutableListOf(trackingItem()),
+            tracking = trackingEvent().copy(ownerKey = "user:another-user"),
+        )
+        val remote = FakeRemoteSyncGateway()
+
+        val result = SyncProcessor(store, remote).runBatch()
+
+        assertEquals(SyncRunResult.IDLE, result)
+        assertEquals(
+            listOf(Failure("outbox-1", "ACCOUNT_SCOPE_MISMATCH", permanent = true)),
+            store.failures,
+        )
+        assertTrue(remote.uploadedTrackingIds.isEmpty())
     }
 
     @Test
@@ -225,9 +261,9 @@ private fun trackingItem() = SyncOutboxEntity(
 
 private fun recoveryTrackItem() = SyncOutboxEntity(
     id = "outbox-track-1",
-    idempotencyKey = "RECOVERY_TRACK:7ebdbd0b-4676-45f1-82cd-e632b3ec6092:UPSERT:0",
+    idempotencyKey = "RECOVERY_TRACK:$TRACK_ID:UPSERT:0",
     aggregateType = SyncAggregateType.RECOVERY_TRACK,
-    aggregateId = "7ebdbd0b-4676-45f1-82cd-e632b3ec6092",
+    aggregateId = TRACK_ID,
     operation = SyncOperation.UPSERT,
     payload = "{}",
     createdAtEpochMillis = 1_000L,
@@ -247,6 +283,8 @@ private fun trackingDeleteItem() = SyncOutboxEntity(
 
 private fun trackingEvent() = TrackingEventEntity(
     id = "event-1",
+    ownerKey = "user:user-1",
+    recoveryTrackId = TRACK_ID,
     programId = "gaming",
     kind = TrackingEventKind.URGE,
     quantity = null,
@@ -261,7 +299,7 @@ private fun trackingEvent() = TrackingEventEntity(
 )
 
 private fun recoveryTrack() = RecoveryTrackEntity(
-    id = "7ebdbd0b-4676-45f1-82cd-e632b3ec6092",
+    id = TRACK_ID,
     ownerKey = "user:user-1",
     programId = "gaming",
     displayAlias = null,
@@ -276,3 +314,5 @@ private fun recoveryTrack() = RecoveryTrackEntity(
     revision = 0,
     syncState = SyncState.PENDING,
 )
+
+private const val TRACK_ID = "7ebdbd0b-4676-45f1-82cd-e632b3ec6092"
