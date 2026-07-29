@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.deaddict.app.auth.AuthGateway
 import com.deaddict.app.auth.SupabaseAuthGateway
 import com.deaddict.app.auth.SupabaseClientProvider
+import com.deaddict.app.coach.RookPreferenceStore
 import com.deaddict.app.insights.LocalInsightsRepository
 import com.deaddict.app.notifications.NotificationPreferenceStore
 import com.deaddict.app.notifications.NotificationScheduler
@@ -83,6 +84,12 @@ object PersistenceModule {
     fun notificationPreferenceStore(
         @ApplicationContext context: Context,
     ): NotificationPreferenceStore = NotificationPreferenceStore(context)
+
+    @Provides
+    @Singleton
+    fun rookPreferenceStore(
+        @ApplicationContext context: Context,
+    ): RookPreferenceStore = RookPreferenceStore(context)
 
     @Provides
     @Singleton

@@ -26,7 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.deaddict.app.ui.AccountDeletionAction
 import com.deaddict.app.ui.AppTab
 import com.deaddict.app.ui.AppViewModel
-import com.deaddict.app.ui.DeAddictRoot
+import com.deaddict.app.ui.MultiAddictionDeAddictRoot
 import com.deaddict.app.ui.theme.DeAddictTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -62,11 +62,13 @@ class MainActivity : FragmentActivity() {
             }
             DeAddictTheme {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    DeAddictRoot(
+                    MultiAddictionDeAddictRoot(
                         state = state,
                         isAppUnlocked = isAppUnlocked,
                         onTabSelected = viewModel::selectTab,
                         onProgramSelected = viewModel::activateProgram,
+                        onTrackSelected = viewModel::selectRecoveryTrack,
+                        onRookToneChanged = viewModel::setRookTone,
                         onTrackingRecorded = viewModel::recordTracking,
                         onRequestUsageAccess = {
                             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))

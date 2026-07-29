@@ -5,6 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.deaddict.app.billing.BillingUiState
 import com.deaddict.app.billing.PlayBillingManager
+import com.deaddict.app.coach.RookPreferenceStore
+import com.deaddict.app.coach.RookPreferences
+import com.deaddict.app.coach.RookTone
 import com.deaddict.app.insights.LocalInsightsRepository
 import com.deaddict.app.insights.SevenDayInsights
 import com.deaddict.app.notifications.NotificationPreferenceStore
@@ -54,6 +57,8 @@ data class AppUiState(
     val selectedTab: AppTab = AppTab.HOME,
     val availablePrograms: List<ProgramDefinition> = emptyList(),
     val activePrograms: List<ProgramDefinition> = emptyList(),
+    val selectedProgramId: String? = null,
+    val rookPreferences: RookPreferences = RookPreferences(),
     val message: String? = null,
     val usageAccessGranted: Boolean = false,
     val dailyUsage: DailyUsageEstimate? = null,
@@ -87,11 +92,13 @@ class AppViewModel @Inject constructor(
     private val notificationScheduler: NotificationScheduler,
     private val insightsRepository: LocalInsightsRepository,
     private val privacyPreferenceStore: PrivacyPreferenceStore,
+    private val rookPreferenceStore: RookPreferenceStore,
     private val database: DeAddictDatabase,
     private val billingManager: PlayBillingManager,
     private val accountDeletionCoordinator: AccountDeletionCoordinator,
 ) : ViewModel() {
     private val selectedTab = MutableStateFlow(AppTab.HOME)
+    private val selectedProgramId = MutableStateFlow<String?>(null)
     private val message = MutableStateFlow<String?>(null)
     private val usageAccessGranted = MutableStateFlow(false)
     private val dailyUsage = MutableStateFlow<DailyUsageEstimate?>(null)
@@ -104,6 +111,12 @@ class AppViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = PrivacyPreferences(),
+        )
+    private val rookPreferences = rookPreferenceStore.preferences
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = RookPreferences(),
         )
     private var rescueStartedAtMillis: Long = 0L
     private val notificationPreferences = notificationPreferenceStore.preferences
@@ -119,12 +132,22 @@ class AppViewModel @Inject constructor(
         programRepository.observeActive(),
         selectedTab,
         message,
-    ) { active: List<ActiveProgramEntity>, tab: AppTab, currentMessage: String? ->
+        selectedProgramId,
+    ) { active: List<ActiveProgramEntity>, tab: AppTab, currentMessage: String?, selectedId: String? ->
+        val mapped = active.mapNotNull { definitionsById[it.programId] }
+        val selected = mapped.firstOrNull { it.id.value == selectedId } ?: mapped.firstOrNull()
+        val ordered = if (selected == null) {
+            mapped
+        } else {
+            listOf(selected) + mapped.filterNot { it.id == selected.id }
+        }
+
         AppUiState(
             isLoading = false,
             selectedTab = tab,
             availablePrograms = definitions,
-            activePrograms = active.mapNotNull { definitionsById[it.programId] },
+            activePrograms = ordered,
+            selectedProgramId = selected?.id?.value,
             message = currentMessage,
         )
     }
@@ -144,19 +167,25 @@ class AppViewModel @Inject constructor(
         )
     }
 
+    private val coachAndDeletion = combine(
+        rookPreferences,
+        accountDeletionInProgress,
+    ) { coach, deleting -> coach to deleting }
+
     val state: StateFlow<AppUiState> = combine(
         stateWithoutInsights,
         insights,
         privacyPreferences,
         billingManager.state,
-        accountDeletionInProgress,
-    ) { base, currentInsights, privacy, billing, deletingAccount ->
+        coachAndDeletion,
+    ) { base, currentInsights, privacy, billing, coachDeletion ->
         base.copy(
             insights = currentInsights,
             privacyPreferences = privacy,
+            rookPreferences = coachDeletion.first,
             billing = billing,
             accountDeletionAvailable = accountDeletionCoordinator.available,
-            accountDeletionInProgress = deletingAccount,
+            accountDeletionInProgress = coachDeletion.second,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -176,6 +205,19 @@ class AppViewModel @Inject constructor(
         selectedTab.value = tab
         message.value = null
         if (tab == AppTab.INSIGHTS) refreshInsights()
+    }
+
+    fun selectRecoveryTrack(programId: String) {
+        if (state.value.activePrograms.none { it.id.value == programId }) return
+        selectedProgramId.value = programId
+        rescueState.value = rescueFlow.reset()
+        insights.value = null
+        message.value = null
+        if (selectedTab.value == AppTab.INSIGHTS) refreshInsights(programId)
+    }
+
+    fun setRookTone(tone: RookTone) {
+        viewModelScope.launch { rookPreferenceStore.setTone(tone) }
     }
 
     fun refreshDigitalUsage() {
@@ -252,7 +294,7 @@ class AppViewModel @Inject constructor(
                 ),
                 SyncPolicy.LOCAL_ONLY,
             )
-            refreshInsights()
+            refreshInsights(program.id.value)
         }
     }
 
@@ -276,9 +318,15 @@ class AppViewModel @Inject constructor(
             runCatching {
                 programRepository.activate(program.id, SyncPolicy.LOCAL_ONLY)
             }.onSuccess {
+                selectedProgramId.value = program.id.value
                 selectedTab.value = AppTab.HOME
+                message.value = if (state.value.activePrograms.isEmpty()) {
+                    "Recovery track added."
+                } else {
+                    "Another recovery track was added. Its progress remains independent."
+                }
             }.onFailure {
-                message.value = "That program could not be added. Please try again."
+                message.value = "That recovery track could not be added. It may already be active."
             }
         }
     }
@@ -316,18 +364,22 @@ class AppViewModel @Inject constructor(
                 )
             }.onSuccess {
                 message.value = when (entry.kind) {
-                    TrackingEventKind.SLIP -> "Slip recorded. Your progress still counts."
-                    else -> "Check-in saved privately."
+                    TrackingEventKind.SLIP ->
+                        "Slip recorded for ${program.displayName}. Your other recovery tracks are unchanged."
+                    else -> "Check-in saved privately for ${program.displayName}."
                 }
-                refreshInsights()
+                refreshInsights(program.id.value)
             }.onFailure {
                 message.value = "The entry could not be saved."
             }
         }
     }
 
-    fun refreshInsights() {
-        val program = state.value.activePrograms.firstOrNull() ?: return
+    fun refreshInsights(programId: String? = null) {
+        val program = programId
+            ?.let(definitionsById::get)
+            ?: state.value.activePrograms.firstOrNull()
+            ?: return
         viewModelScope.launch {
             insights.value = withContext(Dispatchers.Default) {
                 insightsRepository.sevenDays(program.id)
@@ -363,6 +415,8 @@ class AppViewModel @Inject constructor(
             withContext(Dispatchers.IO) { database.clearAllTables() }
             notificationPreferenceStore.setDailyEnabled(false)
             notificationScheduler.cancelDailyCheckIn()
+            selectedProgramId.value = null
+            rescueState.value = rescueFlow.reset()
             insights.value = null
             message.value = "Local recovery data deleted."
         }
@@ -375,6 +429,8 @@ class AppViewModel @Inject constructor(
             runCatching {
                 accountDeletionCoordinator.deleteAccount()
             }.onSuccess { result ->
+                selectedProgramId.value = null
+                rescueState.value = rescueFlow.reset()
                 insights.value = null
                 selectedTab.value = AppTab.HOME
                 message.value = if (result.localCleanupComplete) {
