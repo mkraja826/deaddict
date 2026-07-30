@@ -81,7 +81,7 @@ data class RemoteDailyCheckInRecord(
 data class RemoteTrackCheckInEntryRecord(
     val id: String,
     val userId: String,
-    val dailyCheckInId: String,
+    val localDateEpochDay: Long,
     val recoveryTrackId: String,
     val goalVersionId: String?,
     val outcome: String,
@@ -136,7 +136,11 @@ interface RemoteSyncGateway {
 
     suspend fun upsertDailyCheckIn(userId: String, checkIn: DailyCheckInEntity)
 
-    suspend fun upsertTrackCheckInEntry(userId: String, entry: TrackCheckInEntryEntity)
+    suspend fun upsertTrackCheckInEntry(
+        userId: String,
+        checkIn: DailyCheckInEntity,
+        entry: TrackCheckInEntryEntity,
+    )
 
     suspend fun upsertTrackingEvent(userId: String, event: TrackingEventEntity)
 
@@ -230,12 +234,19 @@ class SupabaseRemoteSyncGateway(
         }
     }
 
-    override suspend fun upsertTrackCheckInEntry(userId: String, entry: TrackCheckInEntryEntity) {
+    override suspend fun upsertTrackCheckInEntry(
+        userId: String,
+        checkIn: DailyCheckInEntity,
+        entry: TrackCheckInEntryEntity,
+    ) {
+        require(entry.dailyCheckInId == checkIn.id) {
+            "Track check-in entry must belong to the supplied daily check-in"
+        }
         requireClient().from("track_check_in_entries").upsert(
             CloudTrackCheckInEntry(
                 id = entry.id,
                 userId = userId,
-                dailyCheckInId = entry.dailyCheckInId,
+                localDateEpochDay = checkIn.localDateEpochDay,
                 recoveryTrackId = entry.recoveryTrackId,
                 goalVersionId = entry.goalVersionId,
                 outcome = entry.outcome.name,
@@ -247,7 +258,7 @@ class SupabaseRemoteSyncGateway(
                 revision = entry.revision,
             ),
         ) {
-            onConflict = "daily_check_in_id,recovery_track_id"
+            onConflict = "user_id,local_date_epoch_day,recovery_track_id"
         }
     }
 
@@ -473,7 +484,7 @@ private data class CloudDailyCheckIn(
 private data class CloudTrackCheckInEntry(
     val id: String,
     @SerialName("user_id") val userId: String,
-    @SerialName("daily_check_in_id") val dailyCheckInId: String,
+    @SerialName("local_date_epoch_day") val localDateEpochDay: Long,
     @SerialName("recovery_track_id") val recoveryTrackId: String,
     @SerialName("goal_version_id") val goalVersionId: String?,
     val outcome: String,
@@ -487,7 +498,7 @@ private data class CloudTrackCheckInEntry(
     fun toRemoteRecord() = RemoteTrackCheckInEntryRecord(
         id = id,
         userId = userId,
-        dailyCheckInId = dailyCheckInId,
+        localDateEpochDay = localDateEpochDay,
         recoveryTrackId = recoveryTrackId,
         goalVersionId = goalVersionId,
         outcome = outcome,
