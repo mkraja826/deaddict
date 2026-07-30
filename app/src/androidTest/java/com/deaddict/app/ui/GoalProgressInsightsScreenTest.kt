@@ -1,8 +1,11 @@
 package com.deaddict.app.ui
 
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.deaddict.app.insights.CrossTrackInsightSummary
 import com.deaddict.app.insights.CrossTrackPairInsight
@@ -22,6 +25,8 @@ import com.deaddict.model.RecoveryTrackRole
 import com.deaddict.model.RecoveryTrackStatus
 import com.deaddict.programs.DefaultProgramRegistry
 import com.deaddict.programs.ProgramId
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -30,26 +35,97 @@ class GoalProgressInsightsScreenTest {
     val compose = createComposeRule()
 
     @Test
-    fun goalCrossTrackAndReplacementSectionsRemainSeparate() {
+    fun sectionsAndControlsRemainIndependent() {
+        var selectedWindow: InsightWindow? = null
+        var hiddenTrackId: String? = null
+
+        compose.setContent {
+            DeAddictTheme {
+                GoalProgressInsightsScreen(
+                    appState = appState(),
+                    insightsState = InsightsControlsUiState(
+                        isLoading = false,
+                        selectedRecoveryTrackId = TRACK_ID,
+                        window = InsightWindow.SEVEN_DAYS,
+                        insights = insights(),
+                    ),
+                    onTabSelected = {},
+                    onWindowSelected = { selectedWindow = it },
+                    onHideComparison = { hiddenTrackId = it },
+                    onRestoreComparisons = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag("insight_window_30").performClick()
+        compose.onNodeWithText("Goal adherence").assertIsDisplayed()
+        compose.onNodeWithText("75%").assertIsDisplayed()
+        compose.onNodeWithText("Earlier goals in this window")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Across your Recovery Tracks")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Coffee")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithTag("hide_cross_track_$OTHER_TRACK_ID")
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithText("Replacement actions")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Slow Breathing")
+            .performScrollTo()
+            .assertIsDisplayed()
+
+        compose.runOnIdle {
+            assertEquals(InsightWindow.THIRTY_DAYS, selectedWindow)
+            assertEquals(OTHER_TRACK_ID, hiddenTrackId)
+        }
+    }
+
+    @Test
+    fun hiddenComparisonCanBeRestoredWithoutRemovingOtherInsights() {
+        var restored = false
+        compose.setContent {
+            DeAddictTheme {
+                GoalProgressInsightsScreen(
+                    appState = appState(),
+                    insightsState = InsightsControlsUiState(
+                        isLoading = false,
+                        selectedRecoveryTrackId = TRACK_ID,
+                        window = InsightWindow.NINETY_DAYS,
+                        hiddenOtherTrackIds = setOf(OTHER_TRACK_ID),
+                        insights = insights(),
+                    ),
+                    onTabSelected = {},
+                    onWindowSelected = {},
+                    onHideComparison = {},
+                    onRestoreComparisons = { restored = true },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Coffee").assertDoesNotExist()
+        compose.onNodeWithText("All cross-track comparisons for this Recovery Track are hidden.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithTag("restore_cross_track_comparisons")
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithText("Replacement actions")
+            .performScrollTo()
+            .assertIsDisplayed()
+
+        compose.runOnIdle { assertTrue(restored) }
+    }
+
+    private fun appState(): AppUiState {
         val registry = DefaultProgramRegistry()
         val gaming = checkNotNull(registry.find(ProgramId.of("gaming")))
         val caffeine = checkNotNull(registry.find(ProgramId.of("caffeine")))
-        val current = progressSegment(
-            id = CURRENT_GOAL_ID,
-            type = RecoveryGoalType.TIME_LIMIT,
-            current = true,
-            adherence = 75,
-            confirmed = 4,
-        )
-        val previous = progressSegment(
-            id = PREVIOUS_GOAL_ID,
-            type = RecoveryGoalType.AWARENESS_ONLY,
-            current = false,
-            adherence = null,
-            confirmed = 2,
-            mode = GoalProgressMode.AWARENESS,
-        )
-        val state = AppUiState(
+        return AppUiState(
             isLoading = false,
             ownerKey = "guest:test-profile",
             selectedTab = AppTab.INSIGHTS,
@@ -71,87 +147,72 @@ class GoalProgressInsightsScreenTest {
                 ),
             ),
             selectedRecoveryTrackId = TRACK_ID,
-            insights = SevenDayInsights(
-                checkInCount = 2,
-                slipCount = 1,
-                averageUrge = 3.0,
-                topTrigger = "stress",
-                peakRiskPeriod = "evening",
-                trend = TrendDirection.STEADY,
-                rescueCount = 2,
-                rescuesWithReducedUrge = 1,
-                explanation = "Selected-track behavioral summary.",
-                goalProgress = GoalProgressSummary(
-                    currentGoal = current,
-                    previousGoals = listOf(previous),
-                    totalConfirmedDays = 6,
-                    goalChangesInWindow = 1,
-                    window = InsightWindow.SEVEN_DAYS,
-                ),
-                crossTrackInsights = CrossTrackInsightSummary(
-                    pairings = listOf(
-                        CrossTrackPairInsight(
-                            otherTrackId = OTHER_TRACK_ID,
-                            pairedDays = 5,
-                            comparableDays = 5,
-                            bothMetDays = 1,
-                            bothDifficultDays = 1,
-                            selectedMetOtherDifficultDays = 3,
-                            selectedDifficultOtherMetDays = 0,
-                            pattern = CrossTrackPattern.POSSIBLE_SHIFT_TOWARD_OTHER,
-                            dominantPatternPercent = 60,
-                        ),
+        )
+    }
+
+    private fun insights(): SevenDayInsights {
+        val current = progressSegment(
+            id = CURRENT_GOAL_ID,
+            type = RecoveryGoalType.TIME_LIMIT,
+            current = true,
+            adherence = 75,
+            confirmed = 4,
+        )
+        val previous = progressSegment(
+            id = PREVIOUS_GOAL_ID,
+            type = RecoveryGoalType.AWARENESS_ONLY,
+            current = false,
+            adherence = null,
+            confirmed = 2,
+            mode = GoalProgressMode.AWARENESS,
+        )
+        return SevenDayInsights(
+            checkInCount = 2,
+            slipCount = 1,
+            averageUrge = 3.0,
+            topTrigger = "stress",
+            peakRiskPeriod = "evening",
+            trend = TrendDirection.STEADY,
+            rescueCount = 2,
+            rescuesWithReducedUrge = 1,
+            explanation = "Selected-track behavioral summary.",
+            goalProgress = GoalProgressSummary(
+                currentGoal = current,
+                previousGoals = listOf(previous),
+                totalConfirmedDays = 6,
+                goalChangesInWindow = 1,
+                window = InsightWindow.SEVEN_DAYS,
+            ),
+            crossTrackInsights = CrossTrackInsightSummary(
+                pairings = listOf(
+                    CrossTrackPairInsight(
+                        otherTrackId = OTHER_TRACK_ID,
+                        pairedDays = 5,
+                        comparableDays = 5,
+                        bothMetDays = 1,
+                        bothDifficultDays = 1,
+                        selectedMetOtherDifficultDays = 3,
+                        selectedDifficultOtherMetDays = 0,
+                        pattern = CrossTrackPattern.POSSIBLE_SHIFT_TOWARD_OTHER,
+                        dominantPatternPercent = 60,
                     ),
-                    replacementActions = listOf(
-                        ReplacementActionInsight(
-                            actionKey = "slow_breathing",
-                            attempts = 2,
-                            reducedUrgeCount = 2,
-                            reducedUrgePercent = 100,
-                            averageUrgeDrop = 1.5,
-                        ),
-                    ),
-                    sharedDifficultDays = 1,
-                    possibleShiftDays = 3,
-                    averageStressOnSharedDifficultDays = 4.5,
-                    averageSleepOnSharedDifficultDays = 2.0,
-                    explanation = "Associations are not proof of causation.",
                 ),
+                replacementActions = listOf(
+                    ReplacementActionInsight(
+                        actionKey = "slow_breathing",
+                        attempts = 2,
+                        reducedUrgeCount = 2,
+                        reducedUrgePercent = 100,
+                        averageUrgeDrop = 1.5,
+                    ),
+                ),
+                sharedDifficultDays = 1,
+                possibleShiftDays = 3,
+                averageStressOnSharedDifficultDays = 4.5,
+                averageSleepOnSharedDifficultDays = 2.0,
+                explanation = "Associations are not proof of causation.",
             ),
         )
-
-        compose.setContent {
-            DeAddictTheme {
-                GoalProgressInsightsScreen(
-                    appState = state,
-                    onTabSelected = {},
-                )
-            }
-        }
-
-        compose.onNodeWithText("Goal adherence").assertIsDisplayed()
-        compose.onNodeWithText("75%").assertIsDisplayed()
-        compose.onNodeWithText("Earlier goals in this window")
-            .performScrollTo()
-            .assertIsDisplayed()
-        compose.onNodeWithText("Awareness only")
-            .performScrollTo()
-            .assertIsDisplayed()
-        compose.onNodeWithText("Across your Recovery Tracks")
-            .performScrollTo()
-            .assertIsDisplayed()
-        compose.onNodeWithText("Coffee")
-            .performScrollTo()
-            .assertIsDisplayed()
-        compose.onNodeWithText("Possible shift toward this track")
-            .performScrollTo()
-            .assertIsDisplayed()
-        compose.onNodeWithText("Replacement actions")
-            .performScrollTo()
-            .assertIsDisplayed()
-        compose.onNodeWithText("Slow Breathing")
-            .performScrollTo()
-            .assertIsDisplayed()
     }
 
     private fun progressSegment(
