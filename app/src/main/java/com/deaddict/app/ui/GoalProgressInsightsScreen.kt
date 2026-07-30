@@ -37,6 +37,7 @@ internal fun GoalProgressInsightsScreen(
 ) {
     val selectedTrack = appState.selectedRecoveryTrack
     val insights = appState.insights
+    val previousGoals = insights?.goalProgress?.previousGoals.orEmpty()
     Scaffold(
         modifier = modifier,
         bottomBar = {
@@ -82,8 +83,7 @@ internal fun GoalProgressInsightsScreen(
                         }
                     }
                 } else {
-                    val progress = insights.goalProgress
-                    val current = progress?.currentGoal
+                    val current = insights.goalProgress?.currentGoal
                     if (current == null) {
                         item {
                             ProgressSectionCard("Current goal progress") {
@@ -94,14 +94,14 @@ internal fun GoalProgressInsightsScreen(
                         item { CurrentGoalProgressCard(current) }
                     }
 
-                    if (!progress?.previousGoals.isNullOrEmpty()) {
+                    if (previousGoals.isNotEmpty()) {
                         item {
                             ProgressSectionCard("Earlier goals in this window") {
                                 Text(
                                     "These results stay separate because the goal definition changed.",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                progress.previousGoals.forEach { previous ->
+                                previousGoals.forEach { previous ->
                                     HistoricalGoalRow(previous)
                                 }
                             }
