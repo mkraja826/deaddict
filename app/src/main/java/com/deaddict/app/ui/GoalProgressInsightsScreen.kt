@@ -42,6 +42,8 @@ internal fun GoalProgressInsightsScreen(
     val insights = appState.insights
     val previousGoals = insights?.goalProgress?.previousGoals.orEmpty()
     val crossTrack = insights?.crossTrackInsights
+    val crossTrackPairings = crossTrack?.pairings.orEmpty()
+    val replacementActions = crossTrack?.replacementActions.orEmpty()
     Scaffold(
         modifier = modifier,
         bottomBar = {
@@ -112,22 +114,23 @@ internal fun GoalProgressInsightsScreen(
                         }
                     }
 
-                    if (!crossTrack?.pairings.isNullOrEmpty()) {
+                    if (crossTrackPairings.isNotEmpty()) {
+                        val summary = checkNotNull(crossTrack)
                         item {
                             ProgressSectionCard("Across your Recovery Tracks") {
                                 Text(
                                     "This compares same-day outcomes without treating one track as the cause of another.",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                ProgressMetric("Shared difficult days", crossTrack.sharedDifficultDays.toString())
-                                ProgressMetric("Possible shift days", crossTrack.possibleShiftDays.toString())
-                                crossTrack.averageStressOnSharedDifficultDays?.let { average ->
+                                ProgressMetric("Shared difficult days", summary.sharedDifficultDays.toString())
+                                ProgressMetric("Possible shift days", summary.possibleShiftDays.toString())
+                                summary.averageStressOnSharedDifficultDays?.let { average ->
                                     ProgressMetric("Stress on shared difficult days", "%.1f / 5".format(average))
                                 }
-                                crossTrack.averageSleepOnSharedDifficultDays?.let { average ->
+                                summary.averageSleepOnSharedDifficultDays?.let { average ->
                                     ProgressMetric("Sleep on shared difficult days", "%.1f / 5".format(average))
                                 }
-                                crossTrack.pairings.forEach { pair ->
+                                crossTrackPairings.forEach { pair ->
                                     CrossTrackPairRow(
                                         pair = pair,
                                         otherTrackTitle = appState.recoveryTracks
@@ -136,19 +139,19 @@ internal fun GoalProgressInsightsScreen(
                                             ?: "Another Recovery Track",
                                     )
                                 }
-                                Text(crossTrack.explanation, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(summary.explanation, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
 
-                    if (!crossTrack?.replacementActions.isNullOrEmpty()) {
+                    if (replacementActions.isNotEmpty()) {
                         item {
                             ProgressSectionCard("Replacement actions") {
                                 Text(
                                     "These results describe recorded Rescue attempts for the selected track. They are not treatment advice.",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                crossTrack.replacementActions.forEach(::ReplacementActionRow)
+                                replacementActions.forEach(::ReplacementActionRow)
                             }
                         }
                     }
