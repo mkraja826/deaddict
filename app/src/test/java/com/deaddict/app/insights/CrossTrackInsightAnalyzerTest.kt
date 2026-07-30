@@ -5,7 +5,6 @@ import com.deaddict.database.entity.RescueSessionEntity
 import com.deaddict.database.entity.SyncState
 import com.deaddict.database.entity.TrackCheckInOutcome
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class CrossTrackInsightAnalyzerTest {
@@ -19,15 +18,15 @@ class CrossTrackInsightAnalyzerTest {
             row(5, TrackCheckInOutcome.GOAL_NOT_MET, TrackCheckInOutcome.GOAL_NOT_MET),
         )
 
-        val summary = assertNotNull(CrossTrackInsightAnalyzer.analyze(rows, emptyList()))
-        val pair = checkNotNull(summary).pairings.single()
+        val summary = checkNotNull(CrossTrackInsightAnalyzer.analyze(rows, emptyList()))
+        val pair = summary.pairings.single()
 
         assertEquals(CrossTrackPattern.POSSIBLE_SHIFT_TOWARD_OTHER, pair.pattern)
         assertEquals(5, pair.comparableDays)
         assertEquals(3, pair.selectedMetOtherDifficultDays)
         assertEquals(60, pair.dominantPatternPercent)
-        assertEquals(1, checkNotNull(summary).sharedDifficultDays)
-        assertEquals(3, checkNotNull(summary).possibleShiftDays)
+        assertEquals(1, summary.sharedDifficultDays)
+        assertEquals(3, summary.possibleShiftDays)
     }
 
     @Test
