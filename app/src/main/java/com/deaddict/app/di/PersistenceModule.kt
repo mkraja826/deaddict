@@ -15,12 +15,15 @@ import com.deaddict.app.sync.RemoteSyncGateway
 import com.deaddict.app.sync.SupabaseRemoteSyncGateway
 import com.deaddict.app.sync.SyncScheduler
 import com.deaddict.app.usage.DigitalUsageRepository
+import com.deaddict.database.DAILY_CHECK_IN_DATABASE_CALLBACK
 import com.deaddict.database.DeAddictDatabase
 import com.deaddict.database.MIGRATION_1_2
 import com.deaddict.database.MIGRATION_2_3
 import com.deaddict.database.MIGRATION_3_4
+import com.deaddict.database.MIGRATION_4_5
 import com.deaddict.database.RECOVERY_EVENT_DATABASE_CALLBACK
 import com.deaddict.database.RECOVERY_TRACK_DATABASE_CALLBACK
+import com.deaddict.database.repository.LocalDailyCheckInRepository
 import com.deaddict.database.repository.LocalProgramRepository
 import com.deaddict.database.repository.LocalRecoveryTrackRepository
 import com.deaddict.database.repository.LocalRescueRepository
@@ -48,9 +51,10 @@ object PersistenceModule {
             DeAddictDatabase::class.java,
             "deaddict.db",
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .addCallback(RECOVERY_TRACK_DATABASE_CALLBACK)
             .addCallback(RECOVERY_EVENT_DATABASE_CALLBACK)
+            .addCallback(DAILY_CHECK_IN_DATABASE_CALLBACK)
             .build()
 
     @Provides
@@ -111,6 +115,11 @@ object PersistenceModule {
         database: DeAddictDatabase,
         ownerContext: RecoveryOwnerContext,
     ): LocalTrackingRepository = LocalTrackingRepository(database, ownerContext)
+
+    @Provides
+    @Singleton
+    fun dailyCheckInRepository(database: DeAddictDatabase): LocalDailyCheckInRepository =
+        LocalDailyCheckInRepository(database)
 
     @Provides
     @Singleton
