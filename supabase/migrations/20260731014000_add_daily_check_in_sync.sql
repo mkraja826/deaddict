@@ -66,9 +66,9 @@ create table public.track_check_in_entries (
         references public.recovery_tracks (id, user_id)
         on update cascade
         on delete cascade,
-    constraint track_check_in_entries_goal_fk
-        foreign key (goal_version_id)
-        references public.recovery_goal_versions (id)
+    constraint track_check_in_entries_goal_owner_fk
+        foreign key (goal_version_id, user_id)
+        references public.recovery_goal_versions (id, user_id)
         on update cascade
         on delete set null,
     constraint track_check_in_entries_owner_date_track_unique
