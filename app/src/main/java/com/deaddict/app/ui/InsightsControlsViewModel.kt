@@ -1,7 +1,11 @@
 package com.deaddict.app.ui
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.deaddict.app.health.AppHealthMetric
+import com.deaddict.app.health.AppHealthReporter
+import com.deaddict.app.health.AppHealthThresholds
 import com.deaddict.app.insights.InsightControls
 import com.deaddict.app.insights.InsightPreferenceStore
 import com.deaddict.app.insights.InsightWindow
@@ -44,6 +48,7 @@ class InsightsControlsViewModel @Inject constructor(
     ownerSessionStore: OwnerSessionStore,
     private val insightsRepository: LocalInsightsRepository,
     private val preferenceStore: InsightPreferenceStore,
+    private val appHealthReporter: AppHealthReporter,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(InsightsControlsUiState())
     val state: StateFlow<InsightsControlsUiState> = mutableState
@@ -135,6 +140,7 @@ class InsightsControlsViewModel @Inject constructor(
         val key = scope.analysisKey()
         if (!force && analyzedScopeKey == key && mutableState.value.insights != null) return
         mutableState.update { it.copy(isLoading = true, errorMessage = null) }
+        val startedAt = SystemClock.elapsedRealtime()
         try {
             val result = withContext(Dispatchers.Default) {
                 insightsRepository.analyze(
@@ -143,6 +149,8 @@ class InsightsControlsViewModel @Inject constructor(
                 )
             }
             if (currentScope?.analysisKey() != key) return
+            appHealthReporter.record(AppHealthMetric.INSIGHTS_LOAD_SUCCESS)
+            recordSlowLoadIfNeeded(startedAt)
             analyzedScopeKey = key
             mutableState.update {
                 it.copy(
@@ -155,6 +163,8 @@ class InsightsControlsViewModel @Inject constructor(
             throw cancelled
         } catch (_: Throwable) {
             if (currentScope?.analysisKey() == key) {
+                appHealthReporter.record(AppHealthMetric.INSIGHTS_LOAD_FAILURE)
+                recordSlowLoadIfNeeded(startedAt)
                 mutableState.update {
                     it.copy(
                         isLoading = false,
@@ -163,6 +173,13 @@ class InsightsControlsViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    private fun recordSlowLoadIfNeeded(startedAtElapsedRealtime: Long) {
+        val duration = SystemClock.elapsedRealtime() - startedAtElapsedRealtime
+        if (duration >= AppHealthThresholds.INSIGHTS_LOAD_SLOW_MILLIS) {
+            appHealthReporter.record(AppHealthMetric.INSIGHTS_LOAD_SLOW)
         }
     }
 
