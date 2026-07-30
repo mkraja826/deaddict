@@ -52,6 +52,10 @@ class MainActivity : FragmentActivity() {
             val dailyCheckInState by dailyCheckInViewModel.state.collectAsStateWithLifecycle()
             val lockRequired = state.privacyPreferences.biometricLockEnabled
             val isAppUnlocked = !lockRequired || biometricAuthenticated
+            val showDailyCheckIn = isAppUnlocked &&
+                !state.isLoading &&
+                !state.requiresOnboarding &&
+                state.selectedTab == AppTab.TODAY
             SideEffect {
                 if (state.privacyPreferences.screenProtectionEnabled) {
                     window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -66,85 +70,81 @@ class MainActivity : FragmentActivity() {
             }
             DeAddictTheme {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    RecoveryTrackAppRoot(
-                        state = state,
-                        isAppUnlocked = isAppUnlocked,
-                        onTabSelected = viewModel::selectTab,
-                        onProgramSelected = viewModel::activateProgram,
-                        onTrackSelected = viewModel::selectRecoveryTrack,
-                        onMakePrimary = viewModel::makePrimary,
-                        onPauseTrack = viewModel::pauseTrack,
-                        onResumeTrack = viewModel::resumeTrack,
-                        onMaintenanceTrack = viewModel::moveTrackToMaintenance,
-                        onArchiveTrack = viewModel::archiveTrack,
-                        onTrackingRecorded = viewModel::recordTrackingSelected,
-                        onRequestUsageAccess = {
-                            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                        },
-                        onBeginRescue = viewModel::beginRescue,
-                        onRescueTick = viewModel::tickRescuePause,
-                        onRescueContinue = viewModel::continueRescue,
-                        onRescueInitialUrge = viewModel::setRescueInitialUrge,
-                        onRescueTrigger = viewModel::chooseRescueTrigger,
-                        onRescueAction = viewModel::chooseRescueAction,
-                        onRescueFinalUrge = viewModel::setRescueFinalUrge,
-                        onRescueComplete = viewModel::completeRescue,
-                        onRescueReset = viewModel::resetRescue,
-                        onEnableDailyNotifications = {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            } else {
-                                viewModel.setDailyNotificationsEnabled(true)
-                            }
-                        },
-                        onDisableDailyNotifications = {
-                            viewModel.setDailyNotificationsEnabled(false)
-                        },
-                        onEnableBiometricLock = {
-                            authenticate {
-                                biometricAuthenticated = true
-                                viewModel.setBiometricLock(true)
-                            }
-                        },
-                        onDisableBiometricLock = {
-                            viewModel.setBiometricLock(false)
-                            biometricAuthenticated = false
-                        },
-                        onScreenProtectionChanged = viewModel::setScreenProtection,
-                        onAnalyticsChanged = viewModel::setAnalyticsEnabled,
-                        onUsageMonitoringChanged = viewModel::setUsageMonitoringEnabled,
-                        onDeleteLocalData = viewModel::deleteLocalRecoveryData,
-                        onPurchasePlus = { offerToken ->
-                            viewModel.purchasePlus(this@MainActivity, offerToken)
-                        },
-                        onRestorePurchases = viewModel::refreshBilling,
-                        onOnboardingNext = viewModel::onboardingNext,
-                        onOnboardingBack = viewModel::onboardingBack,
-                        onOnboardingPrivacyChanged = viewModel::setOnboardingPrivacyAccepted,
-                        onOnboardingUsageModeChanged = viewModel::setOnboardingUsageMode,
-                        onOnboardingMotivationChanged = viewModel::setOnboardingMotivation,
-                        onOnboardingPrimaryProgramChanged = viewModel::setOnboardingPrimaryProgram,
-                        onOnboardingSafetyChanged = viewModel::acknowledgeOnboardingSafety,
-                        onOnboardingGoalChanged = viewModel::setOnboardingGoal,
-                        onOnboardingGoalDetailsChanged = viewModel::setOnboardingGoalDetails,
-                        onOnboardingBaselineChanged = viewModel::setOnboardingBaseline,
-                        onOnboardingTriggerToggled = viewModel::toggleOnboardingTrigger,
-                        onOnboardingRookToneChanged = viewModel::setOnboardingRookTone,
-                        onOnboardingNotificationsChanged = viewModel::setOnboardingNotifications,
-                        onOnboardingComplete = viewModel::completeOnboarding,
-                    )
-                    if (
-                        isAppUnlocked &&
-                        !state.isLoading &&
-                        !state.requiresOnboarding &&
-                        state.selectedTab == AppTab.TODAY
-                    ) {
+                    if (showDailyCheckIn) {
                         DailyCheckInTodayScreen(
                             appState = state,
                             checkInState = dailyCheckInState,
                             onTabSelected = viewModel::selectTab,
                             onSave = dailyCheckInViewModel::save,
                             modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        RecoveryTrackAppRoot(
+                            state = state,
+                            isAppUnlocked = isAppUnlocked,
+                            onTabSelected = viewModel::selectTab,
+                            onProgramSelected = viewModel::activateProgram,
+                            onTrackSelected = viewModel::selectRecoveryTrack,
+                            onMakePrimary = viewModel::makePrimary,
+                            onPauseTrack = viewModel::pauseTrack,
+                            onResumeTrack = viewModel::resumeTrack,
+                            onMaintenanceTrack = viewModel::moveTrackToMaintenance,
+                            onArchiveTrack = viewModel::archiveTrack,
+                            onTrackingRecorded = viewModel::recordTrackingSelected,
+                            onRequestUsageAccess = {
+                                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                            },
+                            onBeginRescue = viewModel::beginRescue,
+                            onRescueTick = viewModel::tickRescuePause,
+                            onRescueContinue = viewModel::continueRescue,
+                            onRescueInitialUrge = viewModel::setRescueInitialUrge,
+                            onRescueTrigger = viewModel::chooseRescueTrigger,
+                            onRescueAction = viewModel::chooseRescueAction,
+                            onRescueFinalUrge = viewModel::setRescueFinalUrge,
+                            onRescueComplete = viewModel::completeRescue,
+                            onRescueReset = viewModel::resetRescue,
+                            onEnableDailyNotifications = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    viewModel.setDailyNotificationsEnabled(true)
+                                }
+                            },
+                            onDisableDailyNotifications = {
+                                viewModel.setDailyNotificationsEnabled(false)
+                            },
+                            onEnableBiometricLock = {
+                                authenticate {
+                                    biometricAuthenticated = true
+                                    viewModel.setBiometricLock(true)
+                                }
+                            },
+                            onDisableBiometricLock = {
+                                viewModel.setBiometricLock(false)
+                                biometricAuthenticated = false
+                            },
+                            onScreenProtectionChanged = viewModel::setScreenProtection,
+                            onAnalyticsChanged = viewModel::setAnalyticsEnabled,
+                            onUsageMonitoringChanged = viewModel::setUsageMonitoringEnabled,
+                            onDeleteLocalData = viewModel::deleteLocalRecoveryData,
+                            onPurchasePlus = { offerToken ->
+                                viewModel.purchasePlus(this@MainActivity, offerToken)
+                            },
+                            onRestorePurchases = viewModel::refreshBilling,
+                            onOnboardingNext = viewModel::onboardingNext,
+                            onOnboardingBack = viewModel::onboardingBack,
+                            onOnboardingPrivacyChanged = viewModel::setOnboardingPrivacyAccepted,
+                            onOnboardingUsageModeChanged = viewModel::setOnboardingUsageMode,
+                            onOnboardingMotivationChanged = viewModel::setOnboardingMotivation,
+                            onOnboardingPrimaryProgramChanged = viewModel::setOnboardingPrimaryProgram,
+                            onOnboardingSafetyChanged = viewModel::acknowledgeOnboardingSafety,
+                            onOnboardingGoalChanged = viewModel::setOnboardingGoal,
+                            onOnboardingGoalDetailsChanged = viewModel::setOnboardingGoalDetails,
+                            onOnboardingBaselineChanged = viewModel::setOnboardingBaseline,
+                            onOnboardingTriggerToggled = viewModel::toggleOnboardingTrigger,
+                            onOnboardingRookToneChanged = viewModel::setOnboardingRookTone,
+                            onOnboardingNotificationsChanged = viewModel::setOnboardingNotifications,
+                            onOnboardingComplete = viewModel::completeOnboarding,
                         )
                     }
                     AccountDeletionAction(
