@@ -192,8 +192,8 @@ class SyncProcessor(
                 SyncAggregateType.TRACK_CHECK_IN_ENTRY -> {
                     val entry = store.trackCheckInEntry(item.aggregateId)
                         ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING")
-                    validateCheckInEntryOwnership(userId, entry)
-                    remote.upsertTrackCheckInEntry(userId, entry)
+                    val parent = validateCheckInEntryOwnership(userId, entry)
+                    remote.upsertTrackCheckInEntry(userId, parent, entry)
                 }
 
                 SyncAggregateType.TRACKING_EVENT -> {
@@ -216,7 +216,7 @@ class SyncProcessor(
     private suspend fun validateCheckInEntryOwnership(
         userId: String,
         entry: TrackCheckInEntryEntity,
-    ) {
+    ): DailyCheckInEntity {
         val parent = store.dailyCheckIn(entry.dailyCheckInId)
             ?: throw PermanentSyncFailure("DAILY_CHECK_IN_MISSING")
         validateOwner(userId, parent.ownerKey)
@@ -230,6 +230,7 @@ class SyncProcessor(
                 throw PermanentSyncFailure("RECOVERY_GOAL_SCOPE_MISMATCH")
             }
         }
+        return parent
     }
 
     private fun validateEventOwnership(
