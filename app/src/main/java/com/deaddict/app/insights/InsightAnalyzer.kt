@@ -32,6 +32,7 @@ data class SevenDayInsights(
     val window: InsightWindow = InsightWindow.SEVEN_DAYS,
     val triggerFrequencies: List<TriggerFrequency> = emptyList(),
     val rescueEffectivenessPercent: Int? = null,
+    val goalProgress: GoalProgressSummary? = null,
 )
 
 object InsightAnalyzer {
