@@ -109,7 +109,7 @@ object TrackCheckInOutcomeResolver {
             RecoveryGoalType.CUSTOM,
             -> TrackCheckInOutcome.OBSERVED
 
-            RecoveryGoalType.QUIT,
+            RecoveryGoalType.QUIT_COMPLETELY,
             RecoveryGoalType.NO_USE_PERIOD,
             -> TrackCheckInOutcome.ALIGNED
 
