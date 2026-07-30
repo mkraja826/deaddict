@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.deaddict.app.ui.AccessibilityAnnouncements
 import com.deaddict.app.ui.AccountDeletionAction
 import com.deaddict.app.ui.AppTab
 import com.deaddict.app.ui.AppViewModel
@@ -31,6 +32,7 @@ import com.deaddict.app.ui.DailyCheckInViewModel
 import com.deaddict.app.ui.GoalProgressInsightsScreen
 import com.deaddict.app.ui.InsightsControlsViewModel
 import com.deaddict.app.ui.RecoveryTrackAppRoot
+import com.deaddict.app.ui.recoveryPane
 import com.deaddict.app.ui.theme.DeAddictTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -76,6 +78,11 @@ class MainActivity : FragmentActivity() {
                     authenticate { biometricAuthenticated = true }
                 }
             }
+            AccessibilityAnnouncements(
+                selectedTab = state.selectedTab,
+                dailyCheckInState = dailyCheckInState,
+                insightsState = insightsControlsState,
+            )
             DeAddictTheme {
                 Box(modifier = Modifier.fillMaxSize()) {
                     when {
@@ -84,7 +91,9 @@ class MainActivity : FragmentActivity() {
                             checkInState = dailyCheckInState,
                             onTabSelected = viewModel::selectTab,
                             onSave = dailyCheckInViewModel::save,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .recoveryPane("Today daily check-in"),
                         )
 
                         showGoalProgressInsights -> GoalProgressInsightsScreen(
@@ -94,7 +103,11 @@ class MainActivity : FragmentActivity() {
                             onWindowSelected = insightsControlsViewModel::selectWindow,
                             onHideComparison = insightsControlsViewModel::hideComparison,
                             onRestoreComparisons = insightsControlsViewModel::restoreComparisons,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .recoveryPane(
+                                    "Insights for ${state.selectedRecoveryTrack?.title ?: "selected Recovery Track"}",
+                                ),
                         )
 
                         else -> RecoveryTrackAppRoot(
