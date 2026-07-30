@@ -1,8 +1,10 @@
 package com.deaddict.app.ui
 
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -26,7 +28,7 @@ class DailyCheckInTodayScreenTest {
     private val caffeine = checkNotNull(registry.find(ProgramId.of("caffeine")))
 
     @Test
-    fun saveRequiresAnIndependentOutcomeForEveryEligibleTrack() {
+    fun saveRequiresAnIndependentAccessibleOutcomeForEveryEligibleTrack() {
         var saved: DailyCheckInSubmission? = null
         val state = AppUiState(
             isLoading = false,
@@ -65,6 +67,13 @@ class DailyCheckInTodayScreenTest {
                 )
             }
         }
+
+        compose.onNodeWithContentDescription("${gaming.displayName}, Goal met")
+            .assertExists()
+        compose.onNodeWithContentDescription("${caffeine.displayName}, Partly met")
+            .assertExists()
+        compose.onNodeWithContentDescription("Mood 1 of 5")
+            .assertExists()
 
         compose.onNodeWithTag("save_daily_check_in")
             .performScrollTo()
