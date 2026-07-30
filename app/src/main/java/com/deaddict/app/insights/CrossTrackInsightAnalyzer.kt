@@ -119,7 +119,7 @@ object CrossTrackInsightAnalyzer {
             CrossTrackPattern.POSSIBLE_SHIFT_TOWARD_OTHER to towardOther,
             CrossTrackPattern.POSSIBLE_SHIFT_TOWARD_SELECTED to towardSelected,
         )
-        val maxCount = candidates.maxOfOrNull(Pair<CrossTrackPattern, Int>::second) ?: 0
+        val maxCount = candidates.maxOfOrNull { it.second } ?: 0
         val minimumDominantCount = maxOf(
             MIN_DOMINANT_DAYS,
             ceil(comparable.size * MIN_DOMINANT_SHARE).toInt(),
@@ -155,7 +155,7 @@ object CrossTrackInsightAnalyzer {
         val attempts = rescues.flatMap { rescue ->
             val finalUrge = rescue.finalUrge ?: return@flatMap emptyList()
             rescue.actionKeys
-                .map(String::trim)
+                .map { it.trim().lowercase() }
                 .filter(String::isNotBlank)
                 .distinct()
                 .map { action -> ActionAttempt(action, rescue.initialUrge - finalUrge) }
