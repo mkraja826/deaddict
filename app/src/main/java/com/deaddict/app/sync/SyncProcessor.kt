@@ -3,12 +3,14 @@ package com.deaddict.app.sync
 import androidx.room.withTransaction
 import com.deaddict.database.DeAddictDatabase
 import com.deaddict.database.entity.ActiveProgramEntity
+import com.deaddict.database.entity.DailyCheckInEntity
 import com.deaddict.database.entity.RecoveryGoalVersionEntity
 import com.deaddict.database.entity.RecoveryTrackEntity
 import com.deaddict.database.entity.RescueSessionEntity
 import com.deaddict.database.entity.SyncAggregateType
 import com.deaddict.database.entity.SyncOperation
 import com.deaddict.database.entity.SyncOutboxEntity
+import com.deaddict.database.entity.TrackCheckInEntryEntity
 import com.deaddict.database.entity.TrackingEventEntity
 import com.deaddict.database.repository.SyncQueue
 import com.deaddict.model.OwnerKey
@@ -26,6 +28,10 @@ interface SyncStore {
     suspend fun recoveryTrack(id: String): RecoveryTrackEntity?
 
     suspend fun recoveryGoal(id: String): RecoveryGoalVersionEntity?
+
+    suspend fun dailyCheckIn(id: String): DailyCheckInEntity?
+
+    suspend fun trackCheckInEntry(id: String): TrackCheckInEntryEntity?
 
     suspend fun trackingEvent(id: String): TrackingEventEntity?
 
@@ -59,6 +65,12 @@ class RoomSyncStore(
     override suspend fun recoveryGoal(id: String): RecoveryGoalVersionEntity? =
         database.recoveryGoalDao().byId(id)
 
+    override suspend fun dailyCheckIn(id: String): DailyCheckInEntity? =
+        database.dailyCheckInDao().byId(id)
+
+    override suspend fun trackCheckInEntry(id: String): TrackCheckInEntryEntity? =
+        database.dailyCheckInDao().entryById(id)
+
     override suspend fun trackingEvent(id: String): TrackingEventEntity? =
         database.trackingDao().byId(id)
 
@@ -72,6 +84,8 @@ class RoomSyncStore(
                     SyncAggregateType.ACTIVE_PROGRAM -> database.programDao().markSynced(item.aggregateId)
                     SyncAggregateType.RECOVERY_TRACK -> database.recoveryTrackDao().markSynced(item.aggregateId)
                     SyncAggregateType.RECOVERY_GOAL -> database.recoveryGoalDao().markSynced(item.aggregateId)
+                    SyncAggregateType.DAILY_CHECK_IN -> database.dailyCheckInDao().markCheckInSynced(item.aggregateId)
+                    SyncAggregateType.TRACK_CHECK_IN_ENTRY -> database.dailyCheckInDao().markEntrySynced(item.aggregateId)
                     SyncAggregateType.TRACKING_EVENT -> database.trackingDao().markSynced(item.aggregateId)
                     SyncAggregateType.RESCUE_SESSION -> database.rescueDao().markSynced(item.aggregateId)
                 }
@@ -168,6 +182,20 @@ class SyncProcessor(
                         ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING"),
                 )
 
+                SyncAggregateType.DAILY_CHECK_IN -> {
+                    val checkIn = store.dailyCheckIn(item.aggregateId)
+                        ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING")
+                    validateOwner(userId, checkIn.ownerKey)
+                    remote.upsertDailyCheckIn(userId, checkIn)
+                }
+
+                SyncAggregateType.TRACK_CHECK_IN_ENTRY -> {
+                    val entry = store.trackCheckInEntry(item.aggregateId)
+                        ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING")
+                    validateCheckInEntryOwnership(userId, entry)
+                    remote.upsertTrackCheckInEntry(userId, entry)
+                }
+
                 SyncAggregateType.TRACKING_EVENT -> {
                     val event = store.trackingEvent(item.aggregateId)
                         ?: throw PermanentSyncFailure("LOCAL_ROW_MISSING")
@@ -185,6 +213,25 @@ class SyncProcessor(
         }
     }
 
+    private suspend fun validateCheckInEntryOwnership(
+        userId: String,
+        entry: TrackCheckInEntryEntity,
+    ) {
+        val parent = store.dailyCheckIn(entry.dailyCheckInId)
+            ?: throw PermanentSyncFailure("DAILY_CHECK_IN_MISSING")
+        validateOwner(userId, parent.ownerKey)
+        val track = store.recoveryTrack(entry.recoveryTrackId)
+            ?: throw PermanentSyncFailure("RECOVERY_TRACK_MISSING")
+        validateOwner(userId, track.ownerKey)
+        entry.goalVersionId?.let { goalId ->
+            val goal = store.recoveryGoal(goalId)
+                ?: throw PermanentSyncFailure("RECOVERY_GOAL_MISSING")
+            if (goal.recoveryTrackId != entry.recoveryTrackId) {
+                throw PermanentSyncFailure("RECOVERY_GOAL_SCOPE_MISMATCH")
+            }
+        }
+    }
+
     private fun validateEventOwnership(
         userId: String,
         ownerKey: String,
@@ -193,6 +240,10 @@ class SyncProcessor(
         if (recoveryTrackId == null) {
             throw PermanentSyncFailure("RECOVERY_TRACK_MISSING")
         }
+        validateOwner(userId, ownerKey)
+    }
+
+    private fun validateOwner(userId: String, ownerKey: String) {
         val expectedOwner = OwnerKey.authenticated(userId).value
         if (ownerKey != expectedOwner) {
             throw PermanentSyncFailure("ACCOUNT_SCOPE_MISMATCH")
