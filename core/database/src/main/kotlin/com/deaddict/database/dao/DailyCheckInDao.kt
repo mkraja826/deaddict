@@ -37,6 +37,17 @@ data class TrackCheckInProgressRow(
     val goalTitle: String?,
 )
 
+data class CrossTrackOutcomeRow(
+    val localDateEpochDay: Long,
+    val mood: Int?,
+    val stress: Int?,
+    val energy: Int?,
+    val sleepQuality: Int?,
+    val selectedOutcome: TrackCheckInOutcome,
+    val otherTrackId: String,
+    val otherOutcome: TrackCheckInOutcome,
+)
+
 @Dao
 interface DailyCheckInDao {
     @Transaction
@@ -91,6 +102,39 @@ interface DailyCheckInDao {
         startEpochDay: Long,
         endEpochDay: Long,
     ): List<TrackCheckInProgressRow>
+
+    @Query(
+        """
+        SELECT
+            checkIn.localDateEpochDay AS localDateEpochDay,
+            checkIn.mood AS mood,
+            checkIn.stress AS stress,
+            checkIn.energy AS energy,
+            checkIn.sleepQuality AS sleepQuality,
+            selected.outcome AS selectedOutcome,
+            other.recoveryTrackId AS otherTrackId,
+            other.outcome AS otherOutcome
+        FROM daily_check_ins AS checkIn
+        INNER JOIN track_check_in_entries AS selected
+            ON selected.dailyCheckInId = checkIn.id
+           AND selected.recoveryTrackId = :selectedRecoveryTrackId
+        INNER JOIN track_check_in_entries AS other
+            ON other.dailyCheckInId = checkIn.id
+           AND other.recoveryTrackId != :selectedRecoveryTrackId
+        INNER JOIN recovery_tracks AS otherTrack
+            ON otherTrack.id = other.recoveryTrackId
+        WHERE checkIn.ownerKey = :ownerKey
+          AND otherTrack.ownerKey = :ownerKey
+          AND checkIn.localDateEpochDay BETWEEN :startEpochDay AND :endEpochDay
+        ORDER BY other.recoveryTrackId, checkIn.localDateEpochDay, other.id
+        """,
+    )
+    suspend fun crossTrackOutcomeRows(
+        ownerKey: String,
+        selectedRecoveryTrackId: String,
+        startEpochDay: Long,
+        endEpochDay: Long,
+    ): List<CrossTrackOutcomeRow>
 
     @Query(
         """
