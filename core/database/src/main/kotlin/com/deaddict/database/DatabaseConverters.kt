@@ -6,6 +6,7 @@ import com.deaddict.database.entity.RescueOutcome
 import com.deaddict.database.entity.SyncAggregateType
 import com.deaddict.database.entity.SyncOperation
 import com.deaddict.database.entity.SyncState
+import com.deaddict.database.entity.TrackCheckInOutcome
 import com.deaddict.database.entity.TrackingEventKind
 import com.deaddict.model.GoalPeriodType
 import com.deaddict.model.RecoveryGoalType
@@ -23,6 +24,8 @@ internal class DatabaseConverters {
     @TypeConverter fun toAggregateType(value: String): SyncAggregateType = SyncAggregateType.valueOf(value)
     @TypeConverter fun fromTrackingKind(value: TrackingEventKind): String = value.name
     @TypeConverter fun toTrackingKind(value: String): TrackingEventKind = TrackingEventKind.valueOf(value)
+    @TypeConverter fun fromTrackCheckInOutcome(value: TrackCheckInOutcome): String = value.name
+    @TypeConverter fun toTrackCheckInOutcome(value: String): TrackCheckInOutcome = TrackCheckInOutcome.valueOf(value)
     @TypeConverter fun fromRescueOutcome(value: RescueOutcome?): String? = value?.name
     @TypeConverter fun toRescueOutcome(value: String?): RescueOutcome? = value?.let(RescueOutcome::valueOf)
     @TypeConverter fun fromRecoveryTrackRole(value: RecoveryTrackRole): String = value.name
