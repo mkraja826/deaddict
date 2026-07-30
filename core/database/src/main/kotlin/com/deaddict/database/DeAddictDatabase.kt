@@ -5,6 +5,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.deaddict.database.dao.DailyCheckInDao
 import com.deaddict.database.dao.ProgramDao
 import com.deaddict.database.dao.RecoveryGoalDao
 import com.deaddict.database.dao.RecoveryTrackDao
@@ -12,10 +13,12 @@ import com.deaddict.database.dao.RescueDao
 import com.deaddict.database.dao.SyncOutboxDao
 import com.deaddict.database.dao.TrackingDao
 import com.deaddict.database.entity.ActiveProgramEntity
+import com.deaddict.database.entity.DailyCheckInEntity
 import com.deaddict.database.entity.RecoveryGoalVersionEntity
 import com.deaddict.database.entity.RecoveryTrackEntity
 import com.deaddict.database.entity.RescueSessionEntity
 import com.deaddict.database.entity.SyncOutboxEntity
+import com.deaddict.database.entity.TrackCheckInEntryEntity
 import com.deaddict.database.entity.TrackingEventEntity
 
 @Database(
@@ -23,11 +26,13 @@ import com.deaddict.database.entity.TrackingEventEntity
         ActiveProgramEntity::class,
         RecoveryTrackEntity::class,
         RecoveryGoalVersionEntity::class,
+        DailyCheckInEntity::class,
+        TrackCheckInEntryEntity::class,
         TrackingEventEntity::class,
         RescueSessionEntity::class,
         SyncOutboxEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(DatabaseConverters::class)
@@ -35,6 +40,7 @@ abstract class DeAddictDatabase : RoomDatabase() {
     abstract fun programDao(): ProgramDao
     abstract fun recoveryTrackDao(): RecoveryTrackDao
     abstract fun recoveryGoalDao(): RecoveryGoalDao
+    abstract fun dailyCheckInDao(): DailyCheckInDao
     abstract fun trackingDao(): TrackingDao
     abstract fun rescueDao(): RescueDao
     abstract fun syncOutboxDao(): SyncOutboxDao
