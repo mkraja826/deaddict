@@ -121,7 +121,6 @@ class LocalDailyCheckInRepository(
             syncState = SyncState.LOCAL_ONLY,
         )
         dao.upsertCheckIn(checkIn)
-        dao.deleteEntries(checkInId)
 
         val entries = resolvedEntries.map { (draftEntry, track, goal) ->
             val previous = existingEntries[track.id]
@@ -141,6 +140,8 @@ class LocalDailyCheckInRepository(
                 syncState = SyncState.LOCAL_ONLY,
             )
         }
+        // Entries omitted from an edit can belong to a track paused or archived later that day.
+        // Preserve them so lifecycle changes never erase an already-recorded Recovery Track outcome.
         dao.upsertEntries(entries)
         checkInId
     }
