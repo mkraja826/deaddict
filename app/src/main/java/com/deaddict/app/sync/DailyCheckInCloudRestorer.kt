@@ -20,20 +20,21 @@ internal class DailyCheckInCloudRestorer(
         val entryTombstones = database.syncOutboxDao()
             .deleteTombstoneIds(SyncAggregateType.TRACK_CHECK_IN_ENTRY.name)
             .toHashSet()
-        val localParentIds = mutableMapOf<String, String?>()
+        val localParentIds = mutableMapOf<ParentKey, String?>()
 
         for (remote in snapshot.dailyCheckIns.sortedWith(
             compareBy<RemoteDailyCheckInRecord> { it.localDateEpochDay }
                 .thenBy { it.clientUpdatedAtEpochMillis }
                 .thenBy { it.id },
         )) {
+            val parentKey = ParentKey(remote.userId, remote.localDateEpochDay)
             if (remote.id in checkInTombstones) {
-                localParentIds[remote.id] = null
+                localParentIds[parentKey] = null
                 counts.skipped += 1
                 continue
             }
             val ownerKey = authenticatedOwner(remote.userId) ?: run {
-                localParentIds[remote.id] = null
+                localParentIds[parentKey] = null
                 counts.skipped += 1
                 continue
             }
@@ -42,14 +43,14 @@ internal class DailyCheckInCloudRestorer(
                 byId != null &&
                 (byId.ownerKey != ownerKey || byId.localDateEpochDay != remote.localDateEpochDay)
             ) {
-                localParentIds[remote.id] = null
+                localParentIds[parentKey] = null
                 counts.skipped += 1
                 continue
             }
             val byDate = dao.byDate(ownerKey, remote.localDateEpochDay)
             val localConflict = byId ?: byDate
             if (localConflict != null && localConflict.syncState != SyncState.SYNCED) {
-                localParentIds[remote.id] = null
+                localParentIds[parentKey] = null
                 counts.skipped += 1
                 continue
             }
@@ -68,17 +69,17 @@ internal class DailyCheckInCloudRestorer(
                     syncState = SyncState.SYNCED,
                 )
             } catch (_: IllegalArgumentException) {
-                localParentIds[remote.id] = null
+                localParentIds[parentKey] = null
                 counts.skipped += 1
                 continue
             }
             dao.upsertCheckIn(restored)
-            localParentIds[remote.id] = restored.id
+            localParentIds[parentKey] = restored.id
             if (localConflict == null) counts.inserted += 1 else counts.updated += 1
         }
 
         for (remote in snapshot.trackCheckInEntries.sortedWith(
-            compareBy<RemoteTrackCheckInEntryRecord> { it.dailyCheckInId }
+            compareBy<RemoteTrackCheckInEntryRecord> { it.localDateEpochDay }
                 .thenBy { it.recoveryTrackId }
                 .thenBy { it.clientUpdatedAtEpochMillis }
                 .thenBy { it.id },
@@ -87,7 +88,7 @@ internal class DailyCheckInCloudRestorer(
                 counts.skipped += 1
                 continue
             }
-            val localParentId = localParentIds[remote.dailyCheckInId]
+            val localParentId = localParentIds[ParentKey(remote.userId, remote.localDateEpochDay)]
             if (localParentId == null) {
                 counts.skipped += 1
                 continue
@@ -159,6 +160,11 @@ internal class DailyCheckInCloudRestorer(
 
     private fun authenticatedOwner(userId: String): String? =
         runCatching { OwnerKey.authenticated(userId).value }.getOrNull()
+
+    private data class ParentKey(
+        val userId: String,
+        val localDateEpochDay: Long,
+    )
 
     private data class Counts(
         var inserted: Int = 0,
