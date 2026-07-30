@@ -151,7 +151,9 @@ internal fun GoalProgressInsightsScreen(
                                     "These results describe recorded Rescue attempts for the selected track. They are not treatment advice.",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                replacementActions.forEach(::ReplacementActionRow)
+                                replacementActions.forEach { action ->
+                                    ReplacementActionRow(action)
+                                }
                             }
                         }
                     }
