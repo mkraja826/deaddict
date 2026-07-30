@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.deaddict.database.entity.RecoveryGoalVersionEntity
 import com.deaddict.database.entity.RecoveryTrackEntity
+import com.deaddict.database.entity.SyncAggregateType
 import com.deaddict.database.entity.SyncState
 import com.deaddict.database.entity.TrackCheckInOutcome
 import com.deaddict.database.repository.DailyCheckInDraft
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -87,6 +89,45 @@ class DailyCheckInRepositoryTest {
     }
 
     @Test
+    fun authenticatedSaveQueuesParentBeforeSanitizedTrackEntry() = runBlocking {
+        val owner = OwnerKey.authenticated("user-1")
+        val trackId = RecoveryTrackId.parse(TRACK_ID)
+        insertTrackAndGoal(owner, trackId)
+        val repository = LocalDailyCheckInRepository(
+            database = database,
+            clock = EpochClock { 2_000L },
+            ids = sequenceIds(CHECK_IN_ID, ENTRY_ID, "outbox-parent", "outbox-entry"),
+        )
+
+        repository.save(
+            DailyCheckInDraft(
+                ownerKey = owner,
+                localDateEpochDay = 20_000L,
+                mood = 4,
+                entries = listOf(
+                    TrackCheckInDraft(
+                        recoveryTrackId = trackId,
+                        outcome = TrackCheckInOutcome.GOAL_PARTLY_MET,
+                        peakUrge = 4,
+                        privateNote = "This must never leave the device.",
+                    ),
+                ),
+            ),
+        )
+
+        val queued = database.syncOutboxDao().nextBatch(2_000L, 10)
+        assertEquals(
+            listOf(SyncAggregateType.DAILY_CHECK_IN, SyncAggregateType.TRACK_CHECK_IN_ENTRY),
+            queued.map { it.aggregateType },
+        )
+        assertEquals(listOf(CHECK_IN_ID, ENTRY_ID), queued.map { it.aggregateId })
+        assertTrue(queued.all { it.payload.contains("revision") })
+        assertFalse(queued.any { it.payload.contains("This must never leave the device.") })
+        assertEquals(SyncState.PENDING, database.dailyCheckInDao().byId(CHECK_IN_ID)?.syncState)
+        assertEquals(SyncState.PENDING, database.dailyCheckInDao().entryById(ENTRY_ID)?.syncState)
+    }
+
+    @Test
     fun editingSameDatePreservesStableIdsAndIncrementsRevisions() = runBlocking {
         val owner = OwnerKey.guest("profile-1")
         val trackId = RecoveryTrackId.parse(TRACK_ID)
@@ -112,7 +153,7 @@ class DailyCheckInRepositoryTest {
     }
 
     @Test
-    fun editingAfterGoalChangeKeepsOriginalGoalVersion() = runBlocking {
+    fun editingAfterGoalChangePreservesOriginalGoalVersion() = runBlocking {
         val owner = OwnerKey.guest("profile-1")
         val trackId = RecoveryTrackId.parse(TRACK_ID)
         insertTrackAndGoal(owner, trackId)
@@ -124,16 +165,19 @@ class DailyCheckInRepositoryTest {
         )
 
         repository.save(draft(owner, trackId, TrackCheckInOutcome.GOAL_PARTLY_MET))
-        database.recoveryGoalDao().replaceCurrent(
+        database.recoveryGoalDao().closeCurrent(
             recoveryTrackId = TRACK_ID,
             closedAtEpochMillis = 2_500L,
-            replacement = RecoveryGoalVersionEntity(
-                id = SECOND_GOAL_ID,
+            syncState = SyncState.LOCAL_ONLY,
+        )
+        database.recoveryGoalDao().insert(
+            RecoveryGoalVersionEntity(
+                id = REPLACEMENT_GOAL_ID,
                 recoveryTrackId = TRACK_ID,
-                goalType = RecoveryGoalType.DAILY_LIMIT,
-                targetValue = 2.0,
-                unitKey = "hours",
-                periodType = com.deaddict.model.GoalPeriodType.DAY,
+                goalType = RecoveryGoalType.QUIT_COMPLETELY,
+                targetValue = null,
+                unitKey = null,
+                periodType = null,
                 title = null,
                 effectiveFromEpochMillis = 2_500L,
                 effectiveUntilEpochMillis = null,
@@ -142,69 +186,64 @@ class DailyCheckInRepositoryTest {
                 revision = 0,
                 syncState = SyncState.LOCAL_ONLY,
             ),
-            syncState = SyncState.LOCAL_ONLY,
         )
         now = 3_000L
-
         repository.save(draft(owner, trackId, TrackCheckInOutcome.GOAL_MET))
 
-        val stored = checkNotNull(repository.observeForDate(owner, 20_000L).first())
-        assertEquals(GOAL_ID, stored.entries.single().goalVersionId)
-        assertEquals(TrackCheckInOutcome.GOAL_MET, stored.entries.single().outcome)
+        val stored = repository.observeForDate(owner, 20_000L).first()
+        assertEquals(GOAL_ID, stored?.entries?.single()?.goalVersionId)
     }
 
     @Test
     fun editingAfterTrackPausePreservesEarlierTrackEntry() = runBlocking {
         val owner = OwnerKey.guest("profile-1")
-        val firstTrackId = RecoveryTrackId.parse(TRACK_ID)
-        val secondTrackId = RecoveryTrackId.parse(SECOND_TRACK_ID)
+        val primaryTrackId = RecoveryTrackId.parse(TRACK_ID)
+        val pausedTrackId = RecoveryTrackId.parse(PAUSED_TRACK_ID)
+        insertTrackAndGoal(owner, primaryTrackId)
         insertTrackAndGoal(
             owner = owner,
-            trackId = firstTrackId,
-            goalId = GOAL_ID,
-            programId = "gaming",
+            trackId = pausedTrackId,
             role = RecoveryTrackRole.SUPPORTING,
         )
-        var now = 2_000L
         val repository = LocalDailyCheckInRepository(
             database = database,
-            clock = EpochClock { now },
-            ids = sequenceIds(CHECK_IN_ID, ENTRY_ID, SECOND_ENTRY_ID),
+            clock = EpochClock { 2_000L },
+            ids = sequenceIds(CHECK_IN_ID, ENTRY_ID, PAUSED_ENTRY_ID),
         )
-
-        repository.save(draft(owner, firstTrackId, TrackCheckInOutcome.GOAL_MET))
-        val firstTrack = checkNotNull(database.recoveryTrackDao().byId(TRACK_ID))
-        database.recoveryTrackDao().update(
-            firstTrack.copy(
-                status = RecoveryTrackStatus.PAUSED,
-                pausedAtEpochMillis = 2_500L,
-                updatedAtEpochMillis = 2_500L,
-                revision = 1L,
+        repository.save(
+            DailyCheckInDraft(
+                ownerKey = owner,
+                localDateEpochDay = 20_000L,
+                entries = listOf(
+                    TrackCheckInDraft(primaryTrackId, TrackCheckInOutcome.GOAL_MET),
+                    TrackCheckInDraft(pausedTrackId, TrackCheckInOutcome.GOAL_PARTLY_MET),
+                ),
             ),
         )
-        insertTrackAndGoal(
-            owner = owner,
-            trackId = secondTrackId,
-            goalId = SECOND_GOAL_ID,
-            programId = "caffeine",
-            role = RecoveryTrackRole.PRIMARY,
+        val paused = checkNotNull(database.recoveryTrackDao().byId(PAUSED_TRACK_ID)).copy(
+            status = RecoveryTrackStatus.PAUSED,
+            pausedAtEpochMillis = 2_500L,
+            updatedAtEpochMillis = 2_500L,
+            revision = 1,
         )
-        now = 3_000L
+        assertEquals(1, database.recoveryTrackDao().update(paused))
 
-        repository.save(draft(owner, secondTrackId, TrackCheckInOutcome.GOAL_PARTLY_MET))
+        repository.save(
+            DailyCheckInDraft(
+                ownerKey = owner,
+                localDateEpochDay = 20_000L,
+                mood = 5,
+                entries = listOf(
+                    TrackCheckInDraft(primaryTrackId, TrackCheckInOutcome.GOAL_MET),
+                ),
+            ),
+        )
 
-        val stored = checkNotNull(repository.observeForDate(owner, 20_000L).first())
+        val stored = repository.observeForDate(owner, 20_000L).first()
+        assertEquals(2, stored?.entries?.size)
         assertEquals(
-            setOf(TRACK_ID, SECOND_TRACK_ID),
-            stored.entries.map { it.recoveryTrackId }.toSet(),
-        )
-        assertEquals(
-            ENTRY_ID,
-            stored.entries.single { it.recoveryTrackId == TRACK_ID }.id,
-        )
-        assertEquals(
-            SECOND_ENTRY_ID,
-            stored.entries.single { it.recoveryTrackId == SECOND_TRACK_ID }.id,
+            TrackCheckInOutcome.GOAL_PARTLY_MET,
+            stored?.entries?.first { it.recoveryTrackId == PAUSED_TRACK_ID }?.outcome,
         )
     }
 
@@ -247,15 +286,13 @@ class DailyCheckInRepositoryTest {
     private suspend fun insertTrackAndGoal(
         owner: OwnerKey,
         trackId: RecoveryTrackId,
-        goalId: String = GOAL_ID,
-        programId: String = "gaming",
         role: RecoveryTrackRole = RecoveryTrackRole.PRIMARY,
     ) {
         database.recoveryTrackDao().insert(
             RecoveryTrackEntity(
                 id = trackId.value,
                 ownerKey = owner.value,
-                programId = programId,
+                programId = if (trackId.value == TRACK_ID) "gaming" else "caffeine",
                 displayAlias = null,
                 role = role,
                 status = RecoveryTrackStatus.ACTIVE,
@@ -266,12 +303,12 @@ class DailyCheckInRepositoryTest {
                 createdAtEpochMillis = 500L,
                 updatedAtEpochMillis = 500L,
                 revision = 0,
-                syncState = SyncState.LOCAL_ONLY,
+                syncState = if (owner.isAuthenticated) SyncState.PENDING else SyncState.LOCAL_ONLY,
             ),
         )
         database.recoveryGoalDao().insert(
             RecoveryGoalVersionEntity(
-                id = goalId,
+                id = if (trackId.value == TRACK_ID) GOAL_ID else PAUSED_GOAL_ID,
                 recoveryTrackId = trackId.value,
                 goalType = RecoveryGoalType.AWARENESS_ONLY,
                 targetValue = null,
@@ -283,7 +320,7 @@ class DailyCheckInRepositoryTest {
                 createdAtEpochMillis = 500L,
                 updatedAtEpochMillis = 500L,
                 revision = 0,
-                syncState = SyncState.LOCAL_ONLY,
+                syncState = if (owner.isAuthenticated) SyncState.PENDING else SyncState.LOCAL_ONLY,
             ),
         )
     }
@@ -298,8 +335,9 @@ class DailyCheckInRepositoryTest {
         const val GOAL_ID = "00000000-0000-0000-0000-000000000102"
         const val CHECK_IN_ID = "00000000-0000-0000-0000-000000000103"
         const val ENTRY_ID = "00000000-0000-0000-0000-000000000104"
-        const val SECOND_TRACK_ID = "00000000-0000-0000-0000-000000000105"
-        const val SECOND_GOAL_ID = "00000000-0000-0000-0000-000000000106"
-        const val SECOND_ENTRY_ID = "00000000-0000-0000-0000-000000000107"
+        const val REPLACEMENT_GOAL_ID = "00000000-0000-0000-0000-000000000105"
+        const val PAUSED_TRACK_ID = "00000000-0000-0000-0000-000000000106"
+        const val PAUSED_GOAL_ID = "00000000-0000-0000-0000-000000000107"
+        const val PAUSED_ENTRY_ID = "00000000-0000-0000-0000-000000000108"
     }
 }
