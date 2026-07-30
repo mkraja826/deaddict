@@ -54,12 +54,20 @@ class LocalInsightsRepository(
             nowMillis = nowMillis,
             zoneId = zoneId,
         )
-        return InsightAnalyzer.analyze(
+        val behavioral = InsightAnalyzer.analyze(
             tracking = database.trackingDao().sinceTrack(recoveryTrackId.value, since),
             rescues = database.rescueDao().sinceTrack(recoveryTrackId.value, since),
             zoneId = zoneId,
             window = window,
-        ).copy(goalProgress = goalProgress)
+        )
+        val goalExplanation = goalProgress?.currentGoal?.let(::progressExplanation)
+        return behavioral.copy(
+            goalProgress = goalProgress,
+            explanation = listOfNotNull(
+                behavioral.explanation.takeIf(String::isNotBlank),
+                goalExplanation,
+            ).joinToString(" "),
+        )
     }
 
     /**
@@ -84,5 +92,19 @@ class LocalInsightsRepository(
             "Selected Recovery Track does not match the requested program"
         }
         return sevenDays(selection.recoveryTrackId, nowMillis)
+    }
+
+    private fun progressExplanation(progress: GoalProgressSegment): String = when (progress.mode) {
+        GoalProgressMode.AWARENESS -> {
+            val consistency = progress.consistencyPercent?.let { "$it%" } ?: "not enough data"
+            "Current goal logging consistency is $consistency across ${progress.confirmedDays} confirmed day(s)."
+        }
+        GoalProgressMode.ADHERENCE -> {
+            val adherence = progress.adherencePercent?.let { "$it%" } ?: "not enough data"
+            "Current goal adherence is $adherence: ${progress.goalMetDays} met, " +
+                "${progress.partlyMetDays} partly met, ${progress.goalNotMetDays} not met, " +
+                "and ${progress.slipDays} slip day(s)."
+        }
+        GoalProgressMode.UNSCOPED -> progress.explanation
     }
 }
