@@ -36,6 +36,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -134,7 +140,12 @@ internal fun DailyCheckInTodayScreen(
         ) {
             when {
                 checkInState.isLoading -> Column(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .semantics {
+                            liveRegion = LiveRegionMode.Polite
+                            contentDescription = "Loading today’s private check-in"
+                        },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
@@ -148,7 +159,11 @@ internal fun DailyCheckInTodayScreen(
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text("No active tracks to check in", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "No active tracks to check in",
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.semantics { heading() },
+                    )
                     Text(
                         "Resume or create a Recovery Track before completing a daily check-in.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -162,7 +177,11 @@ internal fun DailyCheckInTodayScreen(
                 ) {
                     item {
                         Spacer(Modifier.height(12.dp))
-                        Text("Today", style = MaterialTheme.typography.headlineLarge)
+                        Text(
+                            "Today",
+                            style = MaterialTheme.typography.headlineLarge,
+                            modifier = Modifier.semantics { heading() },
+                        )
                         Text(
                             LocalDate.ofEpochDay(checkInState.localDateEpochDay)
                                 .format(DateTimeFormatter.ofPattern("EEEE, d MMMM")),
@@ -205,13 +224,19 @@ internal fun DailyCheckInTodayScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 TrackCheckInOutcome.entries.forEach { outcome ->
+                                    val selected = editor.outcome == outcome
                                     FilterChip(
-                                        selected = editor.outcome == outcome,
+                                        selected = selected,
                                         onClick = {
                                             editors[track.id] = editor.copy(outcome = outcome)
                                         },
                                         label = { Text(outcome.label()) },
-                                        modifier = Modifier.testTag("outcome_${track.id}_${outcome.name}"),
+                                        modifier = Modifier
+                                            .testTag("outcome_${track.id}_${outcome.name}")
+                                            .semantics {
+                                                contentDescription = "${track.title}, ${outcome.label()}"
+                                                stateDescription = if (selected) "Selected" else "Not selected"
+                                            },
                                     )
                                 }
                             }
@@ -222,18 +247,28 @@ internal fun DailyCheckInTodayScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 (1..5).forEach { urge ->
+                                    val selected = editor.peakUrge == urge
                                     FilterChip(
-                                        selected = editor.peakUrge == urge,
+                                        selected = selected,
                                         onClick = {
                                             editors[track.id] = editor.copy(peakUrge = urge)
                                         },
                                         label = { Text(urge.toString()) },
+                                        modifier = Modifier.semantics {
+                                            contentDescription = "${track.title}, peak urge $urge of 5"
+                                            stateDescription = if (selected) "Selected" else "Not selected"
+                                        },
                                     )
                                 }
                                 if (editor.peakUrge != null) {
-                                    TextButton(onClick = {
-                                        editors[track.id] = editor.copy(peakUrge = null)
-                                    }) { Text("Clear") }
+                                    TextButton(
+                                        onClick = {
+                                            editors[track.id] = editor.copy(peakUrge = null)
+                                        },
+                                        modifier = Modifier.semantics {
+                                            contentDescription = "Clear peak urge for ${track.title}"
+                                        },
+                                    ) { Text("Clear") }
                                 }
                             }
 
@@ -269,6 +304,7 @@ internal fun DailyCheckInTodayScreen(
                                     "Enter both a non-negative value and its unit, or leave both blank.",
                                     color = MaterialTheme.colorScheme.error,
                                     style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
                                 )
                             }
 
@@ -298,6 +334,7 @@ internal fun DailyCheckInTodayScreen(
                             Surface(
                                 color = MaterialTheme.colorScheme.secondaryContainer,
                                 shape = MaterialTheme.shapes.medium,
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                             ) {
                                 Text(
                                     feedback,
@@ -333,7 +370,21 @@ internal fun DailyCheckInTodayScreen(
                                     ),
                                 )
                             },
-                            modifier = Modifier.fillMaxWidth().testTag("save_daily_check_in"),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("save_daily_check_in")
+                                .semantics {
+                                    contentDescription = if (checkInState.checkInId == null) {
+                                        "Save today’s check-in"
+                                    } else {
+                                        "Update today’s check-in"
+                                    }
+                                    stateDescription = when {
+                                        checkInState.isSaving -> "Saving"
+                                        canSave -> "Ready"
+                                        else -> "Disabled until every active track has a valid outcome"
+                                    }
+                                },
                             enabled = canSave,
                         ) {
                             Text(
@@ -369,7 +420,11 @@ private fun DailySectionCard(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() },
+            )
             content()
         }
     }
@@ -385,7 +440,10 @@ private fun ContextScale(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, fontWeight = FontWeight.Medium)
             if (selected != null) {
-                TextButton(onClick = { onSelected(null) }) { Text("Clear") }
+                TextButton(
+                    onClick = { onSelected(null) },
+                    modifier = Modifier.semantics { contentDescription = "Clear $label" },
+                ) { Text("Clear") }
             }
         }
         Row(
@@ -393,11 +451,17 @@ private fun ContextScale(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             (1..5).forEach { value ->
+                val isSelected = selected == value
                 FilterChip(
-                    selected = selected == value,
+                    selected = isSelected,
                     onClick = { onSelected(value) },
                     label = { Text(value.toString()) },
-                    modifier = Modifier.testTag("${label.lowercase().replace(' ', '_')}_$value"),
+                    modifier = Modifier
+                        .testTag("${label.lowercase().replace(' ', '_')}_$value")
+                        .semantics {
+                            contentDescription = "$label $value of 5"
+                            stateDescription = if (isSelected) "Selected" else "Not selected"
+                        },
                 )
             }
         }
