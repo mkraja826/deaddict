@@ -314,11 +314,23 @@ class SupabaseRemoteSyncGateway(
         aggregateType: SyncAggregateType,
         aggregateId: String,
     ) {
+        if (aggregateType == SyncAggregateType.DAILY_CHECK_IN) {
+            val localDateEpochDay = aggregateId.toLongOrNull()
+                ?: throw IllegalArgumentException("Daily check-in delete requires a local date")
+            requireClient().from("daily_check_ins").delete {
+                filter {
+                    eq("user_id", userId)
+                    eq("local_date_epoch_day", localDateEpochDay)
+                }
+            }
+            return
+        }
+
         val table = when (aggregateType) {
             SyncAggregateType.ACTIVE_PROGRAM -> "user_programs"
             SyncAggregateType.RECOVERY_TRACK -> "recovery_tracks"
             SyncAggregateType.RECOVERY_GOAL -> "recovery_goal_versions"
-            SyncAggregateType.DAILY_CHECK_IN -> "daily_check_ins"
+            SyncAggregateType.DAILY_CHECK_IN -> error("Daily check-in deletes are handled above")
             SyncAggregateType.TRACK_CHECK_IN_ENTRY -> "track_check_in_entries"
             SyncAggregateType.TRACKING_EVENT -> "tracking_events"
             SyncAggregateType.RESCUE_SESSION -> "rescue_sessions"
