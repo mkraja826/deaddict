@@ -26,6 +26,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.deaddict.app.ui.AccountDeletionAction
 import com.deaddict.app.ui.AppTab
 import com.deaddict.app.ui.AppViewModel
+import com.deaddict.app.ui.DailyCheckInTodayScreen
+import com.deaddict.app.ui.DailyCheckInViewModel
 import com.deaddict.app.ui.RecoveryTrackAppRoot
 import com.deaddict.app.ui.theme.DeAddictTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -33,6 +35,7 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : FragmentActivity() {
     private val viewModel: AppViewModel by viewModels()
+    private val dailyCheckInViewModel: DailyCheckInViewModel by viewModels()
     private var biometricAuthenticated by mutableStateOf(false)
     private var biometricPromptShowing = false
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -46,6 +49,7 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         setContent {
             val state by viewModel.state.collectAsStateWithLifecycle()
+            val dailyCheckInState by dailyCheckInViewModel.state.collectAsStateWithLifecycle()
             val lockRequired = state.privacyPreferences.biometricLockEnabled
             val isAppUnlocked = !lockRequired || biometricAuthenticated
             SideEffect {
@@ -129,6 +133,20 @@ class MainActivity : FragmentActivity() {
                         onOnboardingNotificationsChanged = viewModel::setOnboardingNotifications,
                         onOnboardingComplete = viewModel::completeOnboarding,
                     )
+                    if (
+                        isAppUnlocked &&
+                        !state.isLoading &&
+                        !state.requiresOnboarding &&
+                        state.selectedTab == AppTab.TODAY
+                    ) {
+                        DailyCheckInTodayScreen(
+                            appState = state,
+                            checkInState = dailyCheckInState,
+                            onTabSelected = viewModel::selectTab,
+                            onSave = dailyCheckInViewModel::save,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                     AccountDeletionAction(
                         visible = isAppUnlocked &&
                             !state.isLoading &&
@@ -146,6 +164,7 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshDigitalUsage()
+        dailyCheckInViewModel.refreshDate()
     }
 
     override fun onStop() {
