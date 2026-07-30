@@ -3,6 +3,7 @@ package com.deaddict.database.entity
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
+import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.deaddict.database.DailyCheckInConverters
 import com.deaddict.model.RecoveryTrackStatus
@@ -18,7 +19,7 @@ import com.deaddict.model.RecoveryTrackStatus
     ],
 )
 data class DailyCheckInEntity(
-    val id: String,
+    @PrimaryKey val id: String,
     val ownerKey: String,
     val localDate: String,
     val timezoneId: String,
@@ -93,7 +94,7 @@ data class DailyCheckInEntity(
 )
 @TypeConverters(DailyCheckInConverters::class)
 data class TrackCheckInEntryEntity(
-    val id: String,
+    @PrimaryKey val id: String,
     val dailyCheckInId: String,
     val ownerKey: String,
     val recoveryTrackId: String,
