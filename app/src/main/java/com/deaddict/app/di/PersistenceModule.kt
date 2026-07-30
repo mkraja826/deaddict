@@ -29,6 +29,8 @@ import com.deaddict.database.repository.LocalRescueRepository
 import com.deaddict.database.repository.LocalTrackingRepository
 import com.deaddict.database.repository.RecoveryOwnerContext
 import com.deaddict.database.repository.RecoveryOwnerSelection
+import com.deaddict.database.repository.SyncPolicy
+import com.deaddict.model.OwnerKey
 import com.deaddict.programs.DefaultProgramRegistry
 import com.deaddict.programs.ProgramRegistry
 import dagger.Module
@@ -77,10 +79,26 @@ object PersistenceModule {
         clientProvider: SupabaseClientProvider,
         syncScheduler: SyncScheduler,
         ownerSessionStore: OwnerSessionStore,
+        recoveryTrackRepository: LocalRecoveryTrackRepository,
+        dailyCheckInRepository: LocalDailyCheckInRepository,
     ): AuthGateway = SupabaseAuthGateway(
         client = clientProvider.client,
         onAuthenticated = { user ->
-            ownerSessionStore.establishAuthenticated(user.id)
+            val guest = ownerSessionStore.guestOwnerKey()
+            val authenticated = ownerSessionStore.establishAuthenticated(user.id)
+            listOf(OwnerKey.legacyLocal(), guest)
+                .distinct()
+                .filterNot { it == authenticated }
+                .forEach { source ->
+                    runCatching {
+                        recoveryTrackRepository.reconcileOwner(
+                            from = source,
+                            to = authenticated,
+                            syncPolicy = SyncPolicy.CLOUD_ELIGIBLE,
+                        )
+                        dailyCheckInRepository.reconcileOwner(source, authenticated)
+                    }
+                }
             syncScheduler.scheduleNow()
         },
         onSignedOut = {
