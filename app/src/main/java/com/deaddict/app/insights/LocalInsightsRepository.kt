@@ -5,6 +5,8 @@ import com.deaddict.database.repository.RecoveryOwnerContext
 import com.deaddict.model.RecoveryTrackId
 import com.deaddict.programs.ProgramId
 import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
 
 class LocalInsightsRepository(
     private val database: DeAddictDatabase,
@@ -29,13 +31,35 @@ class LocalInsightsRepository(
         recoveryTrackId: RecoveryTrackId,
         window: InsightWindow,
         nowMillis: Long = System.currentTimeMillis(),
+        zoneId: ZoneId = ZoneId.systemDefault(),
     ): SevenDayInsights {
+        val track = checkNotNull(database.recoveryTrackDao().byId(recoveryTrackId.value)) {
+            "Recovery Track no longer exists"
+        }
         val since = nowMillis - Duration.ofDays(window.days).toMillis()
+        val endEpochDay = Instant.ofEpochMilli(nowMillis)
+            .atZone(zoneId)
+            .toLocalDate()
+            .toEpochDay()
+        val startEpochDay = endEpochDay - window.days + 1
+        val goalProgress = GoalProgressAnalyzer.analyze(
+            rows = database.dailyCheckInDao().progressRows(
+                ownerKey = track.ownerKey,
+                recoveryTrackId = recoveryTrackId.value,
+                startEpochDay = startEpochDay,
+                endEpochDay = endEpochDay,
+            ),
+            currentGoal = database.recoveryGoalDao().current(recoveryTrackId.value),
+            window = window,
+            nowMillis = nowMillis,
+            zoneId = zoneId,
+        )
         return InsightAnalyzer.analyze(
             tracking = database.trackingDao().sinceTrack(recoveryTrackId.value, since),
             rescues = database.rescueDao().sinceTrack(recoveryTrackId.value, since),
+            zoneId = zoneId,
             window = window,
-        )
+        ).copy(goalProgress = goalProgress)
     }
 
     /**
