@@ -224,13 +224,25 @@ class LocalDailyCheckInRepository(
     }
 
     suspend fun delete(ownerKey: OwnerKey, id: String): Boolean = database.withTransaction {
-        val checkIn = database.dailyCheckInDao().byId(id) ?: return@withTransaction false
+        val dao = database.dailyCheckInDao()
+        val checkIn = dao.byId(id) ?: return@withTransaction false
         require(checkIn.ownerKey == ownerKey.value) { "Daily check-in belongs to another owner" }
+        val entries = dao.entries(id)
         val now = clock.nowMillis()
         if (checkIn.syncState != SyncState.LOCAL_ONLY) {
-            enqueueDelete(SyncAggregateType.DAILY_CHECK_IN, checkIn.id, checkIn.revision, now)
+            database.syncOutboxDao().supersedePendingUpsert(
+                SyncAggregateType.DAILY_CHECK_IN.name,
+                checkIn.id,
+            )
+            entries.forEach { entry ->
+                database.syncOutboxDao().supersedePendingUpsert(
+                    SyncAggregateType.TRACK_CHECK_IN_ENTRY.name,
+                    entry.id,
+                )
+            }
+            enqueueDailyDelete(checkIn.localDateEpochDay, checkIn.revision, now)
         }
-        database.dailyCheckInDao().deleteById(id) == 1
+        dao.deleteById(id) == 1
     }
 
     private suspend fun enqueueCheckInIfNeeded(checkIn: DailyCheckInEntity, now: Long) {
@@ -274,21 +286,20 @@ class LocalDailyCheckInRepository(
         )
     }
 
-    private suspend fun enqueueDelete(
-        aggregateType: SyncAggregateType,
-        aggregateId: String,
+    private suspend fun enqueueDailyDelete(
+        localDateEpochDay: Long,
         revision: Long,
         now: Long,
     ) {
-        database.syncOutboxDao().supersedePendingUpsert(aggregateType.name, aggregateId)
+        val aggregateId = localDateEpochDay.toString()
         database.syncOutboxDao().enqueue(
             SyncOutboxEntity(
                 id = ids.next(),
-                idempotencyKey = "${aggregateType.name}:$aggregateId:DELETE:$revision",
-                aggregateType = aggregateType,
+                idempotencyKey = "${SyncAggregateType.DAILY_CHECK_IN.name}:$aggregateId:DELETE:$revision",
+                aggregateType = SyncAggregateType.DAILY_CHECK_IN,
                 aggregateId = aggregateId,
                 operation = SyncOperation.DELETE,
-                payload = """{"id":"$aggregateId"}""",
+                payload = """{"localDateEpochDay":$localDateEpochDay}""",
                 createdAtEpochMillis = now,
                 nextAttemptAtEpochMillis = now,
                 state = OutboxState.PENDING,
