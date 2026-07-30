@@ -70,7 +70,7 @@ create table public.track_check_in_entries (
         foreign key (goal_version_id, user_id)
         references public.recovery_goal_versions (id, user_id)
         on update cascade
-        on delete set null,
+        on delete set null (goal_version_id),
     constraint track_check_in_entries_owner_date_track_unique
         unique (user_id, local_date_epoch_day, recovery_track_id),
     constraint track_check_in_entries_date_valid check (local_date_epoch_day >= 0),
