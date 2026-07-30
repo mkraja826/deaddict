@@ -29,6 +29,7 @@ import com.deaddict.app.ui.AppViewModel
 import com.deaddict.app.ui.DailyCheckInTodayScreen
 import com.deaddict.app.ui.DailyCheckInViewModel
 import com.deaddict.app.ui.GoalProgressInsightsScreen
+import com.deaddict.app.ui.InsightsControlsViewModel
 import com.deaddict.app.ui.RecoveryTrackAppRoot
 import com.deaddict.app.ui.theme.DeAddictTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -37,6 +38,7 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : FragmentActivity() {
     private val viewModel: AppViewModel by viewModels()
     private val dailyCheckInViewModel: DailyCheckInViewModel by viewModels()
+    private val insightsControlsViewModel: InsightsControlsViewModel by viewModels()
     private var biometricAuthenticated by mutableStateOf(false)
     private var biometricPromptShowing = false
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -51,6 +53,7 @@ class MainActivity : FragmentActivity() {
         setContent {
             val state by viewModel.state.collectAsStateWithLifecycle()
             val dailyCheckInState by dailyCheckInViewModel.state.collectAsStateWithLifecycle()
+            val insightsControlsState by insightsControlsViewModel.state.collectAsStateWithLifecycle()
             val lockRequired = state.privacyPreferences.biometricLockEnabled
             val isAppUnlocked = !lockRequired || biometricAuthenticated
             val showDailyCheckIn = isAppUnlocked &&
@@ -86,7 +89,11 @@ class MainActivity : FragmentActivity() {
 
                         showGoalProgressInsights -> GoalProgressInsightsScreen(
                             appState = state,
+                            insightsState = insightsControlsState,
                             onTabSelected = viewModel::selectTab,
+                            onWindowSelected = insightsControlsViewModel::selectWindow,
+                            onHideComparison = insightsControlsViewModel::hideComparison,
+                            onRestoreComparisons = insightsControlsViewModel::restoreComparisons,
                             modifier = Modifier.fillMaxSize(),
                         )
 
@@ -137,7 +144,10 @@ class MainActivity : FragmentActivity() {
                             onScreenProtectionChanged = viewModel::setScreenProtection,
                             onAnalyticsChanged = viewModel::setAnalyticsEnabled,
                             onUsageMonitoringChanged = viewModel::setUsageMonitoringEnabled,
-                            onDeleteLocalData = viewModel::deleteLocalRecoveryData,
+                            onDeleteLocalData = {
+                                insightsControlsViewModel.clearPreferences()
+                                viewModel.deleteLocalRecoveryData()
+                            },
                             onPurchasePlus = { offerToken ->
                                 viewModel.purchasePlus(this@MainActivity, offerToken)
                             },
@@ -165,7 +175,10 @@ class MainActivity : FragmentActivity() {
                             state.selectedTab == AppTab.YOU &&
                             state.accountDeletionAvailable,
                         inProgress = state.accountDeletionInProgress,
-                        onConfirm = viewModel::deleteAccount,
+                        onConfirm = {
+                            insightsControlsViewModel.clearPreferences()
+                            viewModel.deleteAccount()
+                        },
                     )
                 }
             }
@@ -176,6 +189,7 @@ class MainActivity : FragmentActivity() {
         super.onResume()
         viewModel.refreshDigitalUsage()
         dailyCheckInViewModel.refreshDate()
+        insightsControlsViewModel.refresh()
     }
 
     override fun onStop() {
