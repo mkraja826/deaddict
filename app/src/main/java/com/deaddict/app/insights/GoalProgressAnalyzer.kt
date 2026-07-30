@@ -189,6 +189,12 @@ object GoalProgressAnalyzer {
             .distinct()
             .sorted()
         val runs = consecutiveRuns(qualifyingDates)
+        val latestConfirmedDate = sortedRows.lastOrNull()?.localDateEpochDay
+        val latestRun = if (qualifyingDates.lastOrNull() == latestConfirmedDate) {
+            runs.lastOrNull() ?: 0
+        } else {
+            0
+        }
         val matchingMeasurements = sortedRows.filter { row ->
             val measured = row.measuredValue
             measured != null && unitsMatch(row.unitKey, unitKey)
@@ -234,7 +240,7 @@ object GoalProgressAnalyzer {
             awarenessDays = awareness,
             adherencePercent = adherence,
             consistencyPercent = consistency,
-            latestRunDays = runs.lastOrNull() ?: 0,
+            latestRunDays = latestRun,
             bestRunDays = runs.maxOrNull() ?: 0,
             averagePeakUrge = averagePeakUrge,
             measuredDays = matchingMeasurements.size,
