@@ -23,10 +23,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.deaddict.app.insights.CrossTrackPairInsight
+import com.deaddict.app.insights.CrossTrackPattern
 import com.deaddict.app.insights.GoalProgressMode
 import com.deaddict.app.insights.GoalProgressSegment
 import com.deaddict.app.insights.GoalProgressTrend
+import com.deaddict.app.insights.ReplacementActionInsight
 import com.deaddict.model.RecoveryGoalType
+import kotlin.math.abs
 
 @Composable
 internal fun GoalProgressInsightsScreen(
@@ -37,6 +41,7 @@ internal fun GoalProgressInsightsScreen(
     val selectedTrack = appState.selectedRecoveryTrack
     val insights = appState.insights
     val previousGoals = insights?.goalProgress?.previousGoals.orEmpty()
+    val crossTrack = insights?.crossTrackInsights
     Scaffold(
         modifier = modifier,
         bottomBar = {
@@ -66,11 +71,11 @@ internal fun GoalProgressInsightsScreen(
                     Spacer(Modifier.height(12.dp))
                     Text("Insights", style = MaterialTheme.typography.headlineLarge)
                     Text(
-                        "Only ${selectedTrack?.title ?: "the selected Recovery Track"} is included.",
+                        "Only ${selectedTrack?.title ?: "the selected Recovery Track"} is scored here.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "Goals are evaluated separately when they change. No cross-addiction score is created.",
+                        "Goals remain independent. Cross-track patterns are shown only as associations, never as a combined score.",
                         modifier = Modifier.padding(top = 6.dp),
                     )
                 }
@@ -103,6 +108,47 @@ internal fun GoalProgressInsightsScreen(
                                 previousGoals.forEach { previous ->
                                     HistoricalGoalRow(previous)
                                 }
+                            }
+                        }
+                    }
+
+                    if (!crossTrack?.pairings.isNullOrEmpty()) {
+                        item {
+                            ProgressSectionCard("Across your Recovery Tracks") {
+                                Text(
+                                    "This compares same-day outcomes without treating one track as the cause of another.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ProgressMetric("Shared difficult days", crossTrack.sharedDifficultDays.toString())
+                                ProgressMetric("Possible shift days", crossTrack.possibleShiftDays.toString())
+                                crossTrack.averageStressOnSharedDifficultDays?.let { average ->
+                                    ProgressMetric("Stress on shared difficult days", "%.1f / 5".format(average))
+                                }
+                                crossTrack.averageSleepOnSharedDifficultDays?.let { average ->
+                                    ProgressMetric("Sleep on shared difficult days", "%.1f / 5".format(average))
+                                }
+                                crossTrack.pairings.forEach { pair ->
+                                    CrossTrackPairRow(
+                                        pair = pair,
+                                        otherTrackTitle = appState.recoveryTracks
+                                            .firstOrNull { it.id == pair.otherTrackId }
+                                            ?.title
+                                            ?: "Another Recovery Track",
+                                    )
+                                }
+                                Text(crossTrack.explanation, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    if (!crossTrack?.replacementActions.isNullOrEmpty()) {
+                        item {
+                            ProgressSectionCard("Replacement actions") {
+                                Text(
+                                    "These results describe recorded Rescue attempts for the selected track. They are not treatment advice.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                crossTrack.replacementActions.forEach(::ReplacementActionRow)
                             }
                         }
                     }
@@ -216,6 +262,52 @@ private fun HistoricalGoalRow(progress: GoalProgressSegment) {
 }
 
 @Composable
+private fun CrossTrackPairRow(
+    pair: CrossTrackPairInsight,
+    otherTrackTitle: String,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(otherTrackTitle, fontWeight = FontWeight.SemiBold)
+        Text(pair.pattern.label(), color = MaterialTheme.colorScheme.primary)
+        Text(
+            "${pair.comparableDays} comparable of ${pair.pairedDays} paired day(s) · " +
+                "${pair.bothDifficultDays} both difficult · " +
+                "${pair.selectedMetOtherDifficultDays} selected met / other difficult",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun ReplacementActionRow(action: ReplacementActionInsight) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(action.actionKey.humanizeKey(), fontWeight = FontWeight.SemiBold)
+        Text(
+            "Urge decreased after ${action.reducedUrgeCount} of ${action.attempts} recorded attempt(s) " +
+                "(${action.reducedUrgePercent}%).",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            when {
+                action.averageUrgeDrop > 0 -> "Average recorded urge drop: %.1f points".format(action.averageUrgeDrop)
+                action.averageUrgeDrop < 0 -> "Average recorded urge increase: %.1f points".format(abs(action.averageUrgeDrop))
+                else -> "No average recorded urge change"
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (action.attempts < 2) {
+            Text("Early signal — record more attempts before relying on this pattern.")
+        }
+    }
+}
+
+@Composable
 private fun ProgressSectionCard(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
@@ -262,6 +354,23 @@ private fun GoalProgressTrend.label(): String = when (this) {
     GoalProgressTrend.DECLINING -> "Declining"
     GoalProgressTrend.NOT_ENOUGH_DATA -> "Not enough data"
 }
+
+private fun CrossTrackPattern.label(): String = when (this) {
+    CrossTrackPattern.MOVE_TOGETHER -> "Often moved in the same direction"
+    CrossTrackPattern.POSSIBLE_SHIFT_TOWARD_OTHER -> "Possible shift toward this track"
+    CrossTrackPattern.POSSIBLE_SHIFT_TOWARD_SELECTED -> "Possible shift toward the selected track"
+    CrossTrackPattern.MIXED -> "Mixed same-day pattern"
+    CrossTrackPattern.NOT_ENOUGH_DATA -> "Not enough comparable days"
+}
+
+private fun String.humanizeKey(): String =
+    trim()
+        .replace('-', ' ')
+        .replace('_', ' ')
+        .split(' ')
+        .filter(String::isNotBlank)
+        .joinToString(" ") { word -> word.lowercase().replaceFirstChar(Char::uppercase) }
+        .ifBlank { "Replacement action" }
 
 private fun formatNumber(value: Double): String =
     if (value % 1.0 == 0.0) value.toLong().toString() else "%.1f".format(value)
