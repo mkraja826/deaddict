@@ -1,8 +1,10 @@
 package com.deaddict.app.ui
 
 import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -35,7 +37,7 @@ class GoalProgressInsightsScreenTest {
     val compose = createComposeRule()
 
     @Test
-    fun sectionsAndControlsRemainIndependent() {
+    fun sectionsAndAccessibleControlsRemainIndependent() {
         var selectedWindow: InsightWindow? = null
         var hiddenTrackId: String? = null
 
@@ -57,7 +59,9 @@ class GoalProgressInsightsScreenTest {
             }
         }
 
-        compose.onNodeWithTag("insight_window_30").performClick()
+        compose.onNodeWithContentDescription("30 days Insights window")
+            .assertExists()
+            .performClick()
         compose.onNodeWithText("Goal adherence").assertIsDisplayed()
         compose.onNodeWithText("75%").assertIsDisplayed()
         compose.onNodeWithText("Earlier goals in this window")
@@ -69,7 +73,7 @@ class GoalProgressInsightsScreenTest {
         compose.onNodeWithText("Coffee")
             .performScrollTo()
             .assertIsDisplayed()
-        compose.onNodeWithTag("hide_cross_track_$OTHER_TRACK_ID")
+        compose.onNodeWithContentDescription("Hide comparison with Coffee")
             .performScrollTo()
             .performClick()
         compose.onNodeWithText("Replacement actions")
@@ -111,7 +115,7 @@ class GoalProgressInsightsScreenTest {
         compose.onNodeWithText("All cross-track comparisons for this Recovery Track are hidden.")
             .performScrollTo()
             .assertIsDisplayed()
-        compose.onNodeWithTag("restore_cross_track_comparisons")
+        compose.onNodeWithContentDescription("Restore all hidden cross-track comparisons")
             .performScrollTo()
             .performClick()
         compose.onNodeWithText("Replacement actions")
