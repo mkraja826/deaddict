@@ -14,7 +14,7 @@ internal class DailyCheckInCloudRestorer(
     suspend fun apply(snapshot: CloudSnapshot): RestoreSummary {
         val counts = Counts()
         val dao = database.dailyCheckInDao()
-        val checkInTombstones = database.syncOutboxDao()
+        val checkInTombstoneDates = database.syncOutboxDao()
             .deleteTombstoneIds(SyncAggregateType.DAILY_CHECK_IN.name)
             .toHashSet()
         val entryTombstones = database.syncOutboxDao()
@@ -28,7 +28,7 @@ internal class DailyCheckInCloudRestorer(
                 .thenBy { it.id },
         )) {
             val parentKey = ParentKey(remote.userId, remote.localDateEpochDay)
-            if (remote.id in checkInTombstones) {
+            if (remote.localDateEpochDay.toString() in checkInTombstoneDates) {
                 localParentIds[parentKey] = null
                 counts.skipped += 1
                 continue
