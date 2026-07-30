@@ -4,11 +4,15 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
+import com.deaddict.app.insights.CrossTrackInsightSummary
+import com.deaddict.app.insights.CrossTrackPairInsight
+import com.deaddict.app.insights.CrossTrackPattern
 import com.deaddict.app.insights.GoalProgressMode
 import com.deaddict.app.insights.GoalProgressSegment
 import com.deaddict.app.insights.GoalProgressSummary
 import com.deaddict.app.insights.GoalProgressTrend
 import com.deaddict.app.insights.InsightWindow
+import com.deaddict.app.insights.ReplacementActionInsight
 import com.deaddict.app.insights.SevenDayInsights
 import com.deaddict.app.insights.TrendDirection
 import com.deaddict.app.ui.theme.DeAddictTheme
@@ -26,8 +30,10 @@ class GoalProgressInsightsScreenTest {
     val compose = createComposeRule()
 
     @Test
-    fun currentAndHistoricalGoalsAreRenderedSeparately() {
-        val gaming = checkNotNull(DefaultProgramRegistry().find(ProgramId.of("gaming")))
+    fun goalCrossTrackAndReplacementSectionsRemainSeparate() {
+        val registry = DefaultProgramRegistry()
+        val gaming = checkNotNull(registry.find(ProgramId.of("gaming")))
+        val caffeine = checkNotNull(registry.find(ProgramId.of("caffeine")))
         val current = progressSegment(
             id = CURRENT_GOAL_ID,
             type = RecoveryGoalType.TIME_LIMIT,
@@ -47,13 +53,20 @@ class GoalProgressInsightsScreenTest {
             isLoading = false,
             ownerKey = "guest:test-profile",
             selectedTab = AppTab.INSIGHTS,
-            availablePrograms = listOf(gaming),
+            availablePrograms = listOf(gaming, caffeine),
             recoveryTracks = listOf(
                 RecoveryTrackUi(
                     id = TRACK_ID,
                     program = gaming,
                     displayAlias = null,
                     role = RecoveryTrackRole.PRIMARY,
+                    status = RecoveryTrackStatus.ACTIVE,
+                ),
+                RecoveryTrackUi(
+                    id = OTHER_TRACK_ID,
+                    program = caffeine,
+                    displayAlias = "Coffee",
+                    role = RecoveryTrackRole.SUPPORTING,
                     status = RecoveryTrackStatus.ACTIVE,
                 ),
             ),
@@ -65,7 +78,7 @@ class GoalProgressInsightsScreenTest {
                 topTrigger = "stress",
                 peakRiskPeriod = "evening",
                 trend = TrendDirection.STEADY,
-                rescueCount = 1,
+                rescueCount = 2,
                 rescuesWithReducedUrge = 1,
                 explanation = "Selected-track behavioral summary.",
                 goalProgress = GoalProgressSummary(
@@ -74,6 +87,35 @@ class GoalProgressInsightsScreenTest {
                     totalConfirmedDays = 6,
                     goalChangesInWindow = 1,
                     window = InsightWindow.SEVEN_DAYS,
+                ),
+                crossTrackInsights = CrossTrackInsightSummary(
+                    pairings = listOf(
+                        CrossTrackPairInsight(
+                            otherTrackId = OTHER_TRACK_ID,
+                            pairedDays = 5,
+                            comparableDays = 5,
+                            bothMetDays = 1,
+                            bothDifficultDays = 1,
+                            selectedMetOtherDifficultDays = 3,
+                            selectedDifficultOtherMetDays = 0,
+                            pattern = CrossTrackPattern.POSSIBLE_SHIFT_TOWARD_OTHER,
+                            dominantPatternPercent = 60,
+                        ),
+                    ),
+                    replacementActions = listOf(
+                        ReplacementActionInsight(
+                            actionKey = "slow_breathing",
+                            attempts = 2,
+                            reducedUrgeCount = 2,
+                            reducedUrgePercent = 100,
+                            averageUrgeDrop = 1.5,
+                        ),
+                    ),
+                    sharedDifficultDays = 1,
+                    possibleShiftDays = 3,
+                    averageStressOnSharedDifficultDays = 4.5,
+                    averageSleepOnSharedDifficultDays = 2.0,
+                    explanation = "Associations are not proof of causation.",
                 ),
             ),
         )
@@ -93,6 +135,21 @@ class GoalProgressInsightsScreenTest {
             .performScrollTo()
             .assertIsDisplayed()
         compose.onNodeWithText("Awareness only")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Across your Recovery Tracks")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Coffee")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Possible shift toward this track")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Replacement actions")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Slow Breathing")
             .performScrollTo()
             .assertIsDisplayed()
     }
@@ -134,6 +191,7 @@ class GoalProgressInsightsScreenTest {
 
     private companion object {
         const val TRACK_ID = "00000000-0000-0000-0000-000000000401"
+        const val OTHER_TRACK_ID = "00000000-0000-0000-0000-000000000404"
         const val CURRENT_GOAL_ID = "00000000-0000-0000-0000-000000000402"
         const val PREVIOUS_GOAL_ID = "00000000-0000-0000-0000-000000000403"
     }
