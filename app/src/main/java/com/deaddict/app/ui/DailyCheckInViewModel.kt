@@ -13,6 +13,7 @@ import com.deaddict.model.RecoveryTrackId
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -145,7 +146,7 @@ class DailyCheckInViewModel @Inject constructor(
         viewModelScope.launch {
             isSaving.value = true
             feedback.value = null
-            runCatching {
+            try {
                 val owner = checkNotNull(ownerSessionStore.state.first().ownerKey) {
                     "Recovery owner is unavailable"
                 }
@@ -169,12 +170,14 @@ class DailyCheckInViewModel @Inject constructor(
                         },
                     ),
                 )
-            }.onSuccess {
                 feedback.value = "Today’s check-in was saved privately."
-            }.onFailure {
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
                 feedback.value = "Today’s check-in could not be saved. Your draft remains on screen."
+            } finally {
+                isSaving.value = false
             }
-            isSaving.value = false
         }
     }
 }
