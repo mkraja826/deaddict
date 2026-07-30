@@ -3,6 +3,7 @@ package com.deaddict.app.ui
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,7 +20,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,6 +66,7 @@ private data class DailyTrackEditor(
 internal fun DailyCheckInTodayScreen(
     appState: AppUiState,
     checkInState: DailyCheckInUiState,
+    onTabSelected: (AppTab) -> Unit,
     onSave: (DailyCheckInSubmission) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -107,230 +112,247 @@ internal fun DailyCheckInTodayScreen(
         } &&
         !checkInState.isSaving
 
-    Surface(
+    Scaffold(
         modifier = modifier,
-        color = MaterialTheme.colorScheme.background,
-    ) {
-        when {
-            checkInState.isLoading -> Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                CircularProgressIndicator()
-                Spacer(Modifier.height(12.dp))
-                Text("Loading today’s private check-in…")
+        bottomBar = {
+            NavigationBar {
+                AppTab.entries.forEach { tab ->
+                    NavigationBarItem(
+                        selected = tab == AppTab.TODAY,
+                        onClick = { onTabSelected(tab) },
+                        icon = { Text(tab.icon) },
+                        label = { Text(tab.label) },
+                        modifier = Modifier.testTag("daily_tab_${tab.name.lowercase()}"),
+                    )
+                }
             }
-
-            eligibleTracks.isEmpty() -> Column(
-                modifier = Modifier.fillMaxSize().padding(24.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text("No active tracks to check in", style = MaterialTheme.typography.headlineSmall)
-                Text(
-                    "Resume or create a Recovery Track before completing a daily check-in.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize().testTag("daily_check_in_screen"),
-                contentPadding = PaddingValues(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                item {
+        },
+    ) { scaffoldPadding ->
+        Surface(
+            modifier = Modifier.fillMaxSize().padding(scaffoldPadding),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            when {
+                checkInState.isLoading -> Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    CircularProgressIndicator()
                     Spacer(Modifier.height(12.dp))
-                    Text("Today", style = MaterialTheme.typography.headlineLarge)
+                    Text("Loading today’s private check-in…")
+                }
+
+                eligibleTracks.isEmpty() -> Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text("No active tracks to check in", style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        LocalDate.ofEpochDay(checkInState.localDateEpochDay)
-                            .format(DateTimeFormatter.ofPattern("EEEE, d MMMM")),
+                        "Resume or create a Recovery Track before completing a daily check-in.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(
-                        if (checkInState.checkInId == null) {
-                            "Check in once across every active recovery journey."
-                        } else {
-                            "Your saved check-in is ready to review or update."
-                        },
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
                 }
 
-                item {
-                    DailySectionCard("How are you doing overall?") {
-                        Text(
-                            "These four answers are shared context. They do not combine or score your addictions.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        ContextScale("Mood", mood) { mood = it }
-                        ContextScale("Stress", stress) { stress = it }
-                        ContextScale("Energy", energy) { energy = it }
-                        ContextScale("Sleep quality", sleepQuality) { sleepQuality = it }
-                    }
-                }
-
-                items(eligibleTracks, key = { it.id }) { track ->
-                    val editor = checkNotNull(editors[track.id])
-                    DailySectionCard(track.title) {
-                        Text(
-                            if (track.isPrimary) "Primary Recovery Track" else "Supporting Recovery Track",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text("How did this track go today?")
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            TrackCheckInOutcome.entries.forEach { outcome ->
-                                FilterChip(
-                                    selected = editor.outcome == outcome,
-                                    onClick = {
-                                        editors[track.id] = editor.copy(outcome = outcome)
-                                    },
-                                    label = { Text(outcome.label()) },
-                                    modifier = Modifier.testTag("outcome_${track.id}_${outcome.name}"),
-                                )
-                            }
-                        }
-
-                        Text("Peak urge (optional)")
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            (1..5).forEach { urge ->
-                                FilterChip(
-                                    selected = editor.peakUrge == urge,
-                                    onClick = {
-                                        editors[track.id] = editor.copy(peakUrge = urge)
-                                    },
-                                    label = { Text(urge.toString()) },
-                                )
-                            }
-                            if (editor.peakUrge != null) {
-                                TextButton(onClick = {
-                                    editors[track.id] = editor.copy(peakUrge = null)
-                                }) { Text("Clear") }
-                            }
-                        }
-
-                        Text("Measured result (optional)")
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            OutlinedTextField(
-                                value = editor.measuredValue,
-                                onValueChange = { value ->
-                                    editors[track.id] = editor.copy(measuredValue = value.take(20))
-                                },
-                                modifier = Modifier.weight(1f),
-                                label = { Text("Value") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                isError = !editor.measurementValid,
-                                singleLine = true,
-                            )
-                            OutlinedTextField(
-                                value = editor.unitKey,
-                                onValueChange = { value ->
-                                    editors[track.id] = editor.copy(unitKey = value.take(30))
-                                },
-                                modifier = Modifier.weight(1f),
-                                label = { Text("Unit") },
-                                isError = !editor.measurementValid,
-                                singleLine = true,
-                            )
-                        }
-                        if (!editor.measurementValid) {
-                            Text(
-                                "Enter both a non-negative value and its unit, or leave both blank.",
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-
-                        OutlinedTextField(
-                            value = editor.privateNote,
-                            onValueChange = { value ->
-                                editors[track.id] = editor.copy(privateNote = value.take(2_000))
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Private note (optional)") },
-                            minLines = 2,
-                            supportingText = { Text("Stored only on this device in this phase.") },
-                        )
-
-                        if (track.program.safety.tier == SafetyTier.MEDICALLY_HIGH_RISK) {
-                            Text(
-                                "DeAddict does not provide detox or taper instructions. Use professional guidance for major changes.",
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-                }
-
-                checkInState.feedback?.let { feedback ->
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize().testTag("daily_check_in_screen"),
+                    contentPadding = PaddingValues(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     item {
-                        Surface(
-                            color = MaterialTheme.colorScheme.secondaryContainer,
-                            shape = MaterialTheme.shapes.medium,
-                        ) {
-                            Text(
-                                feedback,
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                        }
-                    }
-                }
-
-                item {
-                    Button(
-                        onClick = {
-                            onSave(
-                                DailyCheckInSubmission(
-                                    mood = mood,
-                                    stress = stress,
-                                    energy = energy,
-                                    sleepQuality = sleepQuality,
-                                    entries = eligibleTracks.map { track ->
-                                        val current = checkNotNull(editors[track.id])
-                                        DailyTrackCheckInSubmission(
-                                            recoveryTrackId = track.id,
-                                            outcome = checkNotNull(current.outcome),
-                                            measuredValue = current.measuredValue.trim()
-                                                .takeIf(String::isNotEmpty)
-                                                ?.toDouble(),
-                                            unitKey = current.unitKey.trim().takeIf(String::isNotEmpty),
-                                            peakUrge = current.peakUrge,
-                                            privateNote = current.privateNote,
-                                        )
-                                    },
-                                ),
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth().testTag("save_daily_check_in"),
-                        enabled = canSave,
-                    ) {
+                        Spacer(Modifier.height(12.dp))
+                        Text("Today", style = MaterialTheme.typography.headlineLarge)
                         Text(
-                            when {
-                                checkInState.isSaving -> "Saving…"
-                                checkInState.checkInId == null -> "Save today’s check-in"
-                                else -> "Update today’s check-in"
-                            },
-                        )
-                    }
-                    if (!canSave && !checkInState.isSaving) {
-                        Text(
-                            "Choose one outcome for every active track.",
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            LocalDate.ofEpochDay(checkInState.localDateEpochDay)
+                                .format(DateTimeFormatter.ofPattern("EEEE, d MMMM")),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Text(
+                            if (checkInState.checkInId == null) {
+                                "Check in once across every active recovery journey."
+                            } else {
+                                "Your saved check-in is ready to review or update."
+                            },
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
                     }
-                    Spacer(Modifier.height(24.dp))
+
+                    item {
+                        DailySectionCard("How are you doing overall?") {
+                            Text(
+                                "These four answers are shared context. They do not combine or score your addictions.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            ContextScale("Mood", mood) { mood = it }
+                            ContextScale("Stress", stress) { stress = it }
+                            ContextScale("Energy", energy) { energy = it }
+                            ContextScale("Sleep quality", sleepQuality) { sleepQuality = it }
+                        }
+                    }
+
+                    items(eligibleTracks, key = { it.id }) { track ->
+                        val editor = checkNotNull(editors[track.id])
+                        DailySectionCard(track.title) {
+                            Text(
+                                if (track.isPrimary) "Primary Recovery Track" else "Supporting Recovery Track",
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text("How did this track go today?")
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                TrackCheckInOutcome.entries.forEach { outcome ->
+                                    FilterChip(
+                                        selected = editor.outcome == outcome,
+                                        onClick = {
+                                            editors[track.id] = editor.copy(outcome = outcome)
+                                        },
+                                        label = { Text(outcome.label()) },
+                                        modifier = Modifier.testTag("outcome_${track.id}_${outcome.name}"),
+                                    )
+                                }
+                            }
+
+                            Text("Peak urge (optional)")
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                (1..5).forEach { urge ->
+                                    FilterChip(
+                                        selected = editor.peakUrge == urge,
+                                        onClick = {
+                                            editors[track.id] = editor.copy(peakUrge = urge)
+                                        },
+                                        label = { Text(urge.toString()) },
+                                    )
+                                }
+                                if (editor.peakUrge != null) {
+                                    TextButton(onClick = {
+                                        editors[track.id] = editor.copy(peakUrge = null)
+                                    }) { Text("Clear") }
+                                }
+                            }
+
+                            Text("Measured result (optional)")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                OutlinedTextField(
+                                    value = editor.measuredValue,
+                                    onValueChange = { value ->
+                                        editors[track.id] = editor.copy(measuredValue = value.take(20))
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    label = { Text("Value") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    isError = !editor.measurementValid,
+                                    singleLine = true,
+                                )
+                                OutlinedTextField(
+                                    value = editor.unitKey,
+                                    onValueChange = { value ->
+                                        editors[track.id] = editor.copy(unitKey = value.take(30))
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    label = { Text("Unit") },
+                                    isError = !editor.measurementValid,
+                                    singleLine = true,
+                                )
+                            }
+                            if (!editor.measurementValid) {
+                                Text(
+                                    "Enter both a non-negative value and its unit, or leave both blank.",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+
+                            OutlinedTextField(
+                                value = editor.privateNote,
+                                onValueChange = { value ->
+                                    editors[track.id] = editor.copy(privateNote = value.take(2_000))
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Private note (optional)") },
+                                minLines = 2,
+                                supportingText = { Text("Stored only on this device in this phase.") },
+                            )
+
+                            if (track.program.safety.tier == SafetyTier.MEDICALLY_HIGH_RISK) {
+                                Text(
+                                    "DeAddict does not provide detox or taper instructions. Use professional guidance for major changes.",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
+
+                    checkInState.feedback?.let { feedback ->
+                        item {
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                shape = MaterialTheme.shapes.medium,
+                            ) {
+                                Text(
+                                    feedback,
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                )
+                            }
+                        }
+                    }
+
+                    item {
+                        Button(
+                            onClick = {
+                                onSave(
+                                    DailyCheckInSubmission(
+                                        mood = mood,
+                                        stress = stress,
+                                        energy = energy,
+                                        sleepQuality = sleepQuality,
+                                        entries = eligibleTracks.map { track ->
+                                            val current = checkNotNull(editors[track.id])
+                                            DailyTrackCheckInSubmission(
+                                                recoveryTrackId = track.id,
+                                                outcome = checkNotNull(current.outcome),
+                                                measuredValue = current.measuredValue.trim()
+                                                    .takeIf(String::isNotEmpty)
+                                                    ?.toDouble(),
+                                                unitKey = current.unitKey.trim().takeIf(String::isNotEmpty),
+                                                peakUrge = current.peakUrge,
+                                                privateNote = current.privateNote,
+                                            )
+                                        },
+                                    ),
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("save_daily_check_in"),
+                            enabled = canSave,
+                        ) {
+                            Text(
+                                when {
+                                    checkInState.isSaving -> "Saving…"
+                                    checkInState.checkInId == null -> "Save today’s check-in"
+                                    else -> "Update today’s check-in"
+                                },
+                            )
+                        }
+                        if (!canSave && !checkInState.isSaving) {
+                            Text(
+                                "Choose one outcome for every active track.",
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.height(24.dp))
+                    }
                 }
             }
         }
@@ -340,7 +362,7 @@ internal fun DailyCheckInTodayScreen(
 @Composable
 private fun DailySectionCard(
     title: String,
-    content: @Composable Column.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(Modifier.fillMaxWidth()) {
         Column(
