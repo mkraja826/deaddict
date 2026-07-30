@@ -112,6 +112,61 @@ class DailyCheckInRepositoryTest {
     }
 
     @Test
+    fun editingAfterTrackPausePreservesEarlierTrackEntry() = runBlocking {
+        val owner = OwnerKey.guest("profile-1")
+        val firstTrackId = RecoveryTrackId.parse(TRACK_ID)
+        val secondTrackId = RecoveryTrackId.parse(SECOND_TRACK_ID)
+        insertTrackAndGoal(
+            owner = owner,
+            trackId = firstTrackId,
+            goalId = GOAL_ID,
+            programId = "gaming",
+            role = RecoveryTrackRole.SUPPORTING,
+        )
+        var now = 2_000L
+        val repository = LocalDailyCheckInRepository(
+            database = database,
+            clock = EpochClock { now },
+            ids = sequenceIds(CHECK_IN_ID, ENTRY_ID, SECOND_ENTRY_ID),
+        )
+
+        repository.save(draft(owner, firstTrackId, TrackCheckInOutcome.GOAL_MET))
+        val firstTrack = checkNotNull(database.recoveryTrackDao().byId(TRACK_ID))
+        database.recoveryTrackDao().update(
+            firstTrack.copy(
+                status = RecoveryTrackStatus.PAUSED,
+                pausedAtEpochMillis = 2_500L,
+                updatedAtEpochMillis = 2_500L,
+                revision = 1L,
+            ),
+        )
+        insertTrackAndGoal(
+            owner = owner,
+            trackId = secondTrackId,
+            goalId = SECOND_GOAL_ID,
+            programId = "caffeine",
+            role = RecoveryTrackRole.PRIMARY,
+        )
+        now = 3_000L
+
+        repository.save(draft(owner, secondTrackId, TrackCheckInOutcome.GOAL_PARTLY_MET))
+
+        val stored = checkNotNull(repository.observeForDate(owner, 20_000L).first())
+        assertEquals(
+            setOf(TRACK_ID, SECOND_TRACK_ID),
+            stored.entries.map { it.recoveryTrackId }.toSet(),
+        )
+        assertEquals(
+            ENTRY_ID,
+            stored.entries.single { it.recoveryTrackId == TRACK_ID }.id,
+        )
+        assertEquals(
+            SECOND_ENTRY_ID,
+            stored.entries.single { it.recoveryTrackId == SECOND_TRACK_ID }.id,
+        )
+    }
+
+    @Test
     fun saveRejectsRecoveryTrackFromAnotherOwner() = runBlocking {
         val owner = OwnerKey.guest("profile-1")
         val anotherOwner = OwnerKey.guest("profile-2")
@@ -147,14 +202,20 @@ class DailyCheckInRepositoryTest {
         ),
     )
 
-    private suspend fun insertTrackAndGoal(owner: OwnerKey, trackId: RecoveryTrackId) {
+    private suspend fun insertTrackAndGoal(
+        owner: OwnerKey,
+        trackId: RecoveryTrackId,
+        goalId: String = GOAL_ID,
+        programId: String = "gaming",
+        role: RecoveryTrackRole = RecoveryTrackRole.PRIMARY,
+    ) {
         database.recoveryTrackDao().insert(
             RecoveryTrackEntity(
                 id = trackId.value,
                 ownerKey = owner.value,
-                programId = "gaming",
+                programId = programId,
                 displayAlias = null,
-                role = RecoveryTrackRole.PRIMARY,
+                role = role,
                 status = RecoveryTrackStatus.ACTIVE,
                 startedAtEpochMillis = 500L,
                 pausedAtEpochMillis = null,
@@ -168,7 +229,7 @@ class DailyCheckInRepositoryTest {
         )
         database.recoveryGoalDao().insert(
             RecoveryGoalVersionEntity(
-                id = GOAL_ID,
+                id = goalId,
                 recoveryTrackId = trackId.value,
                 goalType = RecoveryGoalType.AWARENESS_ONLY,
                 targetValue = null,
@@ -195,5 +256,8 @@ class DailyCheckInRepositoryTest {
         const val GOAL_ID = "00000000-0000-0000-0000-000000000102"
         const val CHECK_IN_ID = "00000000-0000-0000-0000-000000000103"
         const val ENTRY_ID = "00000000-0000-0000-0000-000000000104"
+        const val SECOND_TRACK_ID = "00000000-0000-0000-0000-000000000105"
+        const val SECOND_GOAL_ID = "00000000-0000-0000-0000-000000000106"
+        const val SECOND_ENTRY_ID = "00000000-0000-0000-0000-000000000107"
     }
 }
