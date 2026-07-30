@@ -112,6 +112,48 @@ class DailyCheckInRepositoryTest {
     }
 
     @Test
+    fun editingAfterGoalChangeKeepsOriginalGoalVersion() = runBlocking {
+        val owner = OwnerKey.guest("profile-1")
+        val trackId = RecoveryTrackId.parse(TRACK_ID)
+        insertTrackAndGoal(owner, trackId)
+        var now = 2_000L
+        val repository = LocalDailyCheckInRepository(
+            database = database,
+            clock = EpochClock { now },
+            ids = sequenceIds(CHECK_IN_ID, ENTRY_ID),
+        )
+
+        repository.save(draft(owner, trackId, TrackCheckInOutcome.GOAL_PARTLY_MET))
+        database.recoveryGoalDao().replaceCurrent(
+            recoveryTrackId = TRACK_ID,
+            closedAtEpochMillis = 2_500L,
+            replacement = RecoveryGoalVersionEntity(
+                id = SECOND_GOAL_ID,
+                recoveryTrackId = TRACK_ID,
+                goalType = RecoveryGoalType.DAILY_LIMIT,
+                targetValue = 2.0,
+                unitKey = "hours",
+                periodType = com.deaddict.model.GoalPeriodType.DAY,
+                title = null,
+                effectiveFromEpochMillis = 2_500L,
+                effectiveUntilEpochMillis = null,
+                createdAtEpochMillis = 2_500L,
+                updatedAtEpochMillis = 2_500L,
+                revision = 0,
+                syncState = SyncState.LOCAL_ONLY,
+            ),
+            syncState = SyncState.LOCAL_ONLY,
+        )
+        now = 3_000L
+
+        repository.save(draft(owner, trackId, TrackCheckInOutcome.GOAL_MET))
+
+        val stored = checkNotNull(repository.observeForDate(owner, 20_000L).first())
+        assertEquals(GOAL_ID, stored.entries.single().goalVersionId)
+        assertEquals(TrackCheckInOutcome.GOAL_MET, stored.entries.single().outcome)
+    }
+
+    @Test
     fun editingAfterTrackPausePreservesEarlierTrackEntry() = runBlocking {
         val owner = OwnerKey.guest("profile-1")
         val firstTrackId = RecoveryTrackId.parse(TRACK_ID)
