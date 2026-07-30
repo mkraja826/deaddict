@@ -9,6 +9,9 @@ import androidx.room.Update
 import androidx.room.Upsert
 import com.deaddict.database.entity.DailyCheckInEntity
 import com.deaddict.database.entity.TrackCheckInEntryEntity
+import com.deaddict.database.entity.TrackCheckInOutcome
+import com.deaddict.model.GoalPeriodType
+import com.deaddict.model.RecoveryGoalType
 import kotlinx.coroutines.flow.Flow
 
 data class DailyCheckInWithEntries(
@@ -18,6 +21,20 @@ data class DailyCheckInWithEntries(
         entityColumn = "dailyCheckInId",
     )
     val entries: List<TrackCheckInEntryEntity>,
+)
+
+data class TrackCheckInProgressRow(
+    val localDateEpochDay: Long,
+    val goalVersionId: String?,
+    val outcome: TrackCheckInOutcome,
+    val measuredValue: Double?,
+    val unitKey: String?,
+    val peakUrge: Int?,
+    val goalType: RecoveryGoalType?,
+    val targetValue: Double?,
+    val goalUnitKey: String?,
+    val periodType: GoalPeriodType?,
+    val goalTitle: String?,
 )
 
 @Dao
@@ -42,6 +59,38 @@ interface DailyCheckInDao {
         """,
     )
     fun observeRecent(ownerKey: String, limit: Int): Flow<List<DailyCheckInWithEntries>>
+
+    @Query(
+        """
+        SELECT
+            checkIn.localDateEpochDay AS localDateEpochDay,
+            entry.goalVersionId AS goalVersionId,
+            entry.outcome AS outcome,
+            entry.measuredValue AS measuredValue,
+            entry.unitKey AS unitKey,
+            entry.peakUrge AS peakUrge,
+            goal.goalType AS goalType,
+            goal.targetValue AS targetValue,
+            goal.unitKey AS goalUnitKey,
+            goal.periodType AS periodType,
+            goal.title AS goalTitle
+        FROM daily_check_ins AS checkIn
+        INNER JOIN track_check_in_entries AS entry
+            ON entry.dailyCheckInId = checkIn.id
+        LEFT JOIN recovery_goal_versions AS goal
+            ON goal.id = entry.goalVersionId
+        WHERE checkIn.ownerKey = :ownerKey
+          AND entry.recoveryTrackId = :recoveryTrackId
+          AND checkIn.localDateEpochDay BETWEEN :startEpochDay AND :endEpochDay
+        ORDER BY checkIn.localDateEpochDay, entry.id
+        """,
+    )
+    suspend fun progressRows(
+        ownerKey: String,
+        recoveryTrackId: String,
+        startEpochDay: Long,
+        endEpochDay: Long,
+    ): List<TrackCheckInProgressRow>
 
     @Query(
         """
