@@ -1,7 +1,11 @@
 package com.deaddict.app.ui
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.deaddict.app.health.AppHealthMetric
+import com.deaddict.app.health.AppHealthReporter
+import com.deaddict.app.health.AppHealthThresholds
 import com.deaddict.app.session.OwnerSessionStore
 import com.deaddict.database.dao.DailyCheckInWithEntries
 import com.deaddict.database.entity.TrackCheckInOutcome
@@ -79,6 +83,7 @@ private data class PersistedDailyCheckIn(
 class DailyCheckInViewModel @Inject constructor(
     private val ownerSessionStore: OwnerSessionStore,
     private val repository: LocalDailyCheckInRepository,
+    private val appHealthReporter: AppHealthReporter,
 ) : ViewModel() {
     private val localDateEpochDay = MutableStateFlow(LocalDate.now().toEpochDay())
     private val isSaving = MutableStateFlow(false)
@@ -146,6 +151,7 @@ class DailyCheckInViewModel @Inject constructor(
         viewModelScope.launch {
             isSaving.value = true
             feedback.value = null
+            val startedAt = SystemClock.elapsedRealtime()
             try {
                 val owner = checkNotNull(ownerSessionStore.state.first().ownerKey) {
                     "Recovery owner is unavailable"
@@ -170,14 +176,25 @@ class DailyCheckInViewModel @Inject constructor(
                         },
                     ),
                 )
+                appHealthReporter.record(AppHealthMetric.DAILY_CHECK_IN_SAVE_SUCCESS)
+                recordSlowSaveIfNeeded(startedAt)
                 feedback.value = "Today’s check-in was saved privately."
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Throwable) {
+                appHealthReporter.record(AppHealthMetric.DAILY_CHECK_IN_SAVE_FAILURE)
+                recordSlowSaveIfNeeded(startedAt)
                 feedback.value = "Today’s check-in could not be saved. Your draft remains on screen."
             } finally {
                 isSaving.value = false
             }
+        }
+    }
+
+    private fun recordSlowSaveIfNeeded(startedAtElapsedRealtime: Long) {
+        val duration = SystemClock.elapsedRealtime() - startedAtElapsedRealtime
+        if (duration >= AppHealthThresholds.DAILY_CHECK_IN_SLOW_MILLIS) {
+            appHealthReporter.record(AppHealthMetric.DAILY_CHECK_IN_SAVE_SLOW)
         }
     }
 }
