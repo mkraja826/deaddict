@@ -128,7 +128,7 @@ class LocalDailyCheckInRepository(
                 id = previous?.id ?: ids.next(),
                 dailyCheckInId = checkInId,
                 recoveryTrackId = track.id,
-                goalVersionId = goal.id,
+                goalVersionId = previous?.goalVersionId ?: goal.id,
                 outcome = draftEntry.outcome,
                 measuredValue = draftEntry.measuredValue,
                 unitKey = draftEntry.unitKey?.trim()?.takeIf(String::isNotEmpty),
