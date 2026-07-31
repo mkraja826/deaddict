@@ -27,12 +27,39 @@ val hasReleaseSigning = listOf(
 ).all { !it.isNullOrBlank() }
 val appVersionCode = 100
 val appVersionName = "1.0.0"
+val defaultPublicSiteBase = "https://mkraja826.github.io/deaddict"
+
+fun configuredValue(name: String, fallback: String): String =
+    providers.gradleProperty(name).orNull
+        ?: System.getenv(name)?.takeIf(String::isNotBlank)
+        ?: deaddictLocalProperties.getProperty(name)?.takeIf(String::isNotBlank)
+        ?: fallback
+
+fun buildConfigLiteral(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
 fun resourceNames(resourceFile: File): Set<String> =
     Regex("""<(?:string|plurals)\s+name="([^"]+)"""")
         .findAll(resourceFile.readText())
         .map { match -> match.groupValues[1] }
         .toSet()
+
+val privacyPolicyUrl = configuredValue(
+    "DEADDICT_PRIVACY_POLICY_URL",
+    "$defaultPublicSiteBase/privacy.html",
+)
+val termsOfServiceUrl = configuredValue(
+    "DEADDICT_TERMS_URL",
+    "$defaultPublicSiteBase/terms.html",
+)
+val supportUrl = configuredValue(
+    "DEADDICT_SUPPORT_URL",
+    "$defaultPublicSiteBase/support.html",
+)
+val accountDeletionUrl = configuredValue(
+    "DEADDICT_ACCOUNT_DELETION_URL",
+    "$defaultPublicSiteBase/account-deletion.html",
+)
 
 android {
     namespace = "com.deaddict.app"
@@ -51,9 +78,13 @@ android {
             .orElse(deaddictLocalProperties.getProperty("DEADDICT_SUPABASE_PUBLISHABLE_KEY", ""))
         val googleServerClientId = providers.gradleProperty("DEADDICT_GOOGLE_SERVER_CLIENT_ID")
             .orElse(deaddictLocalProperties.getProperty("DEADDICT_GOOGLE_SERVER_CLIENT_ID", ""))
-        buildConfigField("String", "SUPABASE_URL", "\"${supabaseUrl.get()}\"")
-        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"${supabaseKey.get()}\"")
-        buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"${googleServerClientId.get()}\"")
+        buildConfigField("String", "SUPABASE_URL", buildConfigLiteral(supabaseUrl.get()))
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", buildConfigLiteral(supabaseKey.get()))
+        buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", buildConfigLiteral(googleServerClientId.get()))
+        buildConfigField("String", "PRIVACY_POLICY_URL", buildConfigLiteral(privacyPolicyUrl))
+        buildConfigField("String", "TERMS_OF_SERVICE_URL", buildConfigLiteral(termsOfServiceUrl))
+        buildConfigField("String", "SUPPORT_URL", buildConfigLiteral(supportUrl))
+        buildConfigField("String", "ACCOUNT_DELETION_URL", buildConfigLiteral(accountDeletionUrl))
     }
 
     signingConfigs {
@@ -97,7 +128,7 @@ android {
 
 tasks.register("verifyReleaseReadiness") {
     group = "verification"
-    description = "Checks structural release, localization, policy, and staged-rollout safeguards."
+    description = "Checks structural release, localization, policy, public-site, and rollout safeguards."
 
     doLast {
         check(appVersionCode >= 100) { "Production versionCode must be at least 100." }
@@ -162,6 +193,21 @@ tasks.register("verifyReleaseReadiness") {
             }
         }
 
+        val requiredPublicSiteFiles = listOf(
+            rootProject.file("docs/site/index.html"),
+            rootProject.file("docs/site/privacy.html"),
+            rootProject.file("docs/site/terms.html"),
+            rootProject.file("docs/site/support.html"),
+            rootProject.file("docs/site/account-deletion.html"),
+            rootProject.file("docs/site/styles.css"),
+            rootProject.file(".github/workflows/deploy-public-site.yml"),
+        )
+        requiredPublicSiteFiles.forEach { requiredFile ->
+            check(requiredFile.isFile && requiredFile.length() >= 150L) {
+                "Public-site source is missing or incomplete: ${requiredFile.relativeTo(rootProject.projectDir)}"
+            }
+        }
+
         val rolloutRaw = providers.gradleProperty("DEADDICT_ROLLOUT_PERCENT").orNull
             ?: System.getenv("DEADDICT_ROLLOUT_PERCENT")
             ?: "5"
@@ -199,20 +245,39 @@ tasks.register("verifyPublishReadiness") {
             check(value.startsWith("https://") && value.length > "https://".length + 3) {
                 "$name must be a public HTTPS URL."
             }
+            val normalized = value.lowercase()
+            check(
+                "localhost" !in normalized &&
+                    "127.0.0.1" !in normalized &&
+                    "example.com" !in normalized &&
+                    "placeholder" !in normalized
+            ) {
+                "$name must not use a local or placeholder endpoint."
+            }
             return value
         }
 
-        requireHttps("DEADDICT_PRIVACY_POLICY_URL")
-        requireHttps("DEADDICT_ACCOUNT_DELETION_URL")
-        requireHttps("DEADDICT_SUPPORT_URL")
+        val publicUrls = listOf(
+            requireHttps("DEADDICT_PRIVACY_POLICY_URL"),
+            requireHttps("DEADDICT_TERMS_URL"),
+            requireHttps("DEADDICT_ACCOUNT_DELETION_URL"),
+            requireHttps("DEADDICT_SUPPORT_URL"),
+        )
+        check(publicUrls.map(String::trimEnd).toSet().size == publicUrls.size) {
+            "Privacy, terms, deletion, and support must use distinct public URLs."
+        }
 
         val supportEmail = requiredValue("DEADDICT_SUPPORT_EMAIL")
         check(Regex("""^[^\s@]+@[^\s@]+\.[^\s@]+$""").matches(supportEmail)) {
             "DEADDICT_SUPPORT_EMAIL must be a valid public support email."
         }
 
+        val developerName = requiredValue("DEADDICT_DEVELOPER_NAME")
+        check(developerName.trim().length >= 2) {
+            "DEADDICT_DEVELOPER_NAME must be the verified public developer identity."
+        }
+
         listOf(
-            "DEADDICT_DEVELOPER_NAME",
             "DEADDICT_SUPABASE_URL",
             "DEADDICT_SUPABASE_PUBLISHABLE_KEY",
             "DEADDICT_GOOGLE_SERVER_CLIENT_ID",
@@ -221,7 +286,7 @@ tasks.register("verifyPublishReadiness") {
             "Release keystore path, passwords, and alias are required for publication."
         }
 
-        println("Publish readiness verified. Public policy, deletion, support, backend, auth, and signing metadata are present.")
+        println("Publish readiness verified. Public policy, terms, deletion, support, backend, auth, and signing metadata are present.")
     }
 }
 
