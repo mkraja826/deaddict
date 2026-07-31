@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -24,8 +25,14 @@ val hasReleaseSigning = listOf(
     releaseKeyAlias,
     releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
-val appVersionCode = 1
-val appVersionName = "0.1.0"
+val appVersionCode = 100
+val appVersionName = "1.0.0"
+
+fun resourceNames(resourceFile: File): Set<String> =
+    Regex("""<(?:string|plurals)\s+name="([^"]+)"""")
+        .findAll(resourceFile.readText())
+        .map { match -> match.groupValues[1] }
+        .toSet()
 
 android {
     namespace = "com.deaddict.app"
@@ -90,12 +97,15 @@ android {
 
 tasks.register("verifyReleaseReadiness") {
     group = "verification"
-    description = "Checks structural release and staged-rollout safeguards."
+    description = "Checks structural release, localization, policy, and staged-rollout safeguards."
 
     doLast {
-        check(appVersionCode > 0) { "versionCode must be positive." }
-        check(Regex("""\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?""").matches(appVersionName)) {
-            "versionName must use semantic versioning."
+        check(appVersionCode >= 100) { "Production versionCode must be at least 100." }
+        check(Regex("""\d+\.\d+\.\d+""").matches(appVersionName)) {
+            "Production versionName must use stable semantic versioning without a prerelease suffix."
+        }
+        check(appVersionName.substringBefore('.').toInt() >= 1) {
+            "Production versionName must be 1.0.0 or later."
         }
         check(android.buildTypes.getByName("release").isMinifyEnabled) {
             "Release minification must remain enabled."
@@ -109,6 +119,46 @@ tasks.register("verifyReleaseReadiness") {
         ).forEach { requiredSetting ->
             check(manifest.contains(requiredSetting)) {
                 "AndroidManifest.xml is missing release safeguard: $requiredSetting"
+            }
+        }
+
+        val localeConfig = file("src/main/res/xml/locales_config.xml")
+        check(localeConfig.isFile) { "Per-app locale configuration is missing." }
+        listOf("en", "hi", "te").forEach { locale ->
+            check(localeConfig.readText().contains("android:name=\"$locale\"")) {
+                "locales_config.xml must include $locale."
+            }
+        }
+
+        val baseStrings = file("src/main/res/values/strings.xml")
+        check(baseStrings.isFile) { "Base string resources are missing." }
+        val baseResourceNames = resourceNames(baseStrings)
+        check(baseResourceNames.isNotEmpty()) { "Base string resources are empty." }
+        listOf(
+            "hi" to file("src/main/res/values-hi/strings.xml"),
+            "te" to file("src/main/res/values-te/strings.xml"),
+        ).forEach { (locale, localizedFile) ->
+            check(localizedFile.isFile) { "Localized resources are missing for $locale." }
+            val missing = baseResourceNames - resourceNames(localizedFile)
+            check(missing.isEmpty()) {
+                "Localized resources for $locale are missing: ${missing.sorted().joinToString()}"
+            }
+        }
+
+        val requiredPublishFiles = listOf(
+            rootProject.file("docs/legal/PRIVACY_POLICY.md"),
+            rootProject.file("docs/legal/TERMS_OF_SERVICE.md"),
+            rootProject.file("docs/legal/ACCOUNT_DELETION.md"),
+            rootProject.file("docs/play/STORE_LISTING_EN.md"),
+            rootProject.file("docs/play/DATA_SAFETY.md"),
+            rootProject.file("docs/play/CONTENT_RATING.md"),
+            rootProject.file("docs/play/ASSET_REQUIREMENTS.md"),
+            rootProject.file("docs/play/PUBLISH_CHECKLIST.md"),
+            rootProject.file("docs/play/RELEASE_NOTES_1.0.0.md"),
+        )
+        requiredPublishFiles.forEach { requiredFile ->
+            check(requiredFile.isFile && requiredFile.length() >= 300L) {
+                "Required publish document is missing or incomplete: ${requiredFile.relativeTo(rootProject.projectDir)}"
             }
         }
 
@@ -129,7 +179,49 @@ tasks.register("verifyReleaseReadiness") {
             "Rollouts above 25% require DEADDICT_ALLOW_WIDE_ROLLOUT=true after health review."
         }
 
-        println("Release readiness verified for a staged rollout of $rolloutPercent%.")
+        println("Release readiness verified for DeAddict $appVersionName ($appVersionCode) at $rolloutPercent% rollout.")
+    }
+}
+
+tasks.register("verifyPublishReadiness") {
+    group = "verification"
+    description = "Requires production credentials and public policy/support endpoints before Play publication."
+    dependsOn("verifyReleaseReadiness")
+
+    doLast {
+        fun requiredValue(name: String): String =
+            providers.gradleProperty(name).orNull
+                ?: System.getenv(name)?.takeIf(String::isNotBlank)
+                ?: error("$name is required for publication.")
+
+        fun requireHttps(name: String): String {
+            val value = requiredValue(name)
+            check(value.startsWith("https://") && value.length > "https://".length + 3) {
+                "$name must be a public HTTPS URL."
+            }
+            return value
+        }
+
+        requireHttps("DEADDICT_PRIVACY_POLICY_URL")
+        requireHttps("DEADDICT_ACCOUNT_DELETION_URL")
+        requireHttps("DEADDICT_SUPPORT_URL")
+
+        val supportEmail = requiredValue("DEADDICT_SUPPORT_EMAIL")
+        check(Regex("""^[^\s@]+@[^\s@]+\.[^\s@]+$""").matches(supportEmail)) {
+            "DEADDICT_SUPPORT_EMAIL must be a valid public support email."
+        }
+
+        listOf(
+            "DEADDICT_DEVELOPER_NAME",
+            "DEADDICT_SUPABASE_URL",
+            "DEADDICT_SUPABASE_PUBLISHABLE_KEY",
+            "DEADDICT_GOOGLE_SERVER_CLIENT_ID",
+        ).forEach(::requiredValue)
+        check(hasReleaseSigning) {
+            "Release keystore path, passwords, and alias are required for publication."
+        }
+
+        println("Publish readiness verified. Public policy, deletion, support, backend, auth, and signing metadata are present.")
     }
 }
 
