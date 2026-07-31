@@ -1,6 +1,6 @@
 package com.deaddict.app.coach
 
-enum class RookMoment {
+enum class LegacyRookMoment {
     TODAY,
     TRACK,
     RESCUE,
@@ -8,7 +8,7 @@ enum class RookMoment {
 }
 
 data class RookContext(
-    val moment: RookMoment,
+    val moment: LegacyRookMoment,
     val programName: String,
     val activeTrackCount: Int,
     val requestedTone: RookTone,
@@ -46,19 +46,19 @@ object RookMessageEngine {
     }
 
     private fun brutalMessage(context: RookContext): String = when (context.moment) {
-        RookMoment.TODAY -> if (context.activeTrackCount > 1) {
+        LegacyRookMoment.TODAY -> if (context.activeTrackCount > 1) {
             "${context.programName} is the focus right now. The other tracks still count, so do not use one win to hide another problem."
         } else {
             "${context.programName} is the target. You do not need another speech; make the next useful choice."
         }
 
-        RookMoment.TRACK ->
+        LegacyRookMoment.TRACK ->
             "Log ${context.programName} honestly. Hiding the numbers has never improved them."
 
-        RookMoment.RESCUE ->
+        LegacyRookMoment.RESCUE ->
             "This urge is loud, not powerful. Stop negotiating with it and finish the Rescue steps for ${context.programName}."
 
-        RookMoment.INSIGHTS -> if (context.activeTrackCount > 1) {
+        LegacyRookMoment.INSIGHTS -> if (context.activeTrackCount > 1) {
             "Check ${context.programName} without ignoring the other tracks. Replacement habits love hiding behind partial progress."
         } else {
             "The pattern is already in the data. Read it, own it, and change the next repeat."
@@ -66,19 +66,19 @@ object RookMessageEngine {
     }
 
     private fun directMessage(context: RookContext): String = when (context.moment) {
-        RookMoment.TODAY -> if (context.activeTrackCount > 1) {
+        LegacyRookMoment.TODAY -> if (context.activeTrackCount > 1) {
             "You are viewing ${context.programName}. Progress and lapses remain independent for every recovery track."
         } else {
             "Focus on the next helpful action for ${context.programName}."
         }
 
-        RookMoment.TRACK ->
+        LegacyRookMoment.TRACK ->
             "Record what happened for ${context.programName} as accurately as you can."
 
-        RookMoment.RESCUE ->
+        LegacyRookMoment.RESCUE ->
             "Stay with the Rescue steps for ${context.programName}. You only need to make the next safe decision."
 
-        RookMoment.INSIGHTS ->
+        LegacyRookMoment.INSIGHTS ->
             "Review the recent pattern for ${context.programName} and choose one adjustment."
     }
 }
