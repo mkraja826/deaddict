@@ -21,6 +21,14 @@
     <string name="accessibility_hidden">छिपा हुआ</string>
     <string name="accessibility_selected">चयनित</string>
     <string name="accessibility_not_selected">चयनित नहीं</string>
+    <string name="public_resources_button">सहायता और कानूनी</string>
+    <string name="public_resources_title">सहायता और कानूनी संसाधन</string>
+    <string name="public_resources_description">DeAddict की सार्वजनिक नीतियाँ, सहायता पृष्ठ या बाहरी खाता-हटाने के निर्देश खोलें।</string>
+    <string name="privacy_policy">गोपनीयता नीति</string>
+    <string name="terms_of_service">सेवा की शर्तें</string>
+    <string name="support_center">सहायता केंद्र</string>
+    <string name="account_deletion_help">खाता हटाने में सहायता</string>
+    <string name="close">बंद करें</string>
     <plurals name="accessibility_day_streak">
         <item quantity="one">%d दिन की निरंतरता</item>
         <item quantity="other">%d दिनों की निरंतरता</item>

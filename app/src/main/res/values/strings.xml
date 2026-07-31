@@ -21,6 +21,14 @@
     <string name="accessibility_hidden">Hidden</string>
     <string name="accessibility_selected">Selected</string>
     <string name="accessibility_not_selected">Not selected</string>
+    <string name="public_resources_button">Support &amp; legal</string>
+    <string name="public_resources_title">Support and legal resources</string>
+    <string name="public_resources_description">Open DeAddict’s public policies, support page, or external account-deletion instructions.</string>
+    <string name="privacy_policy">Privacy policy</string>
+    <string name="terms_of_service">Terms of service</string>
+    <string name="support_center">Support center</string>
+    <string name="account_deletion_help">Account-deletion help</string>
+    <string name="close">Close</string>
     <plurals name="accessibility_day_streak">
         <item quantity="one">%d day streak</item>
         <item quantity="other">%d day streak</item>

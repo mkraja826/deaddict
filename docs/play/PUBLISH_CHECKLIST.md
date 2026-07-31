@@ -22,18 +22,29 @@ A production release is approved only when every blocking item below is complete
 - [ ] Production notification behavior is tested on Android 13+ and after reboot/timezone change.
 - [ ] Backup, restore, cross-device conflict, guest reconciliation, and deletion are tested with production-like accounts.
 
+## Public support site
+
+- [ ] Repository variable `DEADDICT_DEVELOPER_NAME` contains the verified public developer identity.
+- [ ] Repository variable `DEADDICT_SUPPORT_EMAIL` contains the monitored public support email.
+- [ ] GitHub Pages is configured to deploy through GitHub Actions.
+- [ ] **Validate and deploy public support site** completes successfully from `main` using `workflow_dispatch`.
+- [ ] Home, privacy, terms, support, and account-deletion pages load over HTTPS without authentication.
+- [ ] In-app **Support & legal** links open the same production pages.
+- [ ] Developer name, support email, internal links, dark mode, keyboard focus, and mobile layout are reviewed on the deployed site.
+
 ## Public metadata required by the publish gate
 
 - [ ] `DEADDICT_DEVELOPER_NAME`
 - [ ] `DEADDICT_SUPPORT_EMAIL`
 - [ ] `DEADDICT_SUPPORT_URL`
 - [ ] `DEADDICT_PRIVACY_POLICY_URL`
+- [ ] `DEADDICT_TERMS_URL`
 - [ ] `DEADDICT_ACCOUNT_DELETION_URL`
 - [ ] Production Supabase URL and publishable key
 - [ ] Production Google server client ID
 - [ ] Release keystore path, alias, and passwords
 
-All URLs must be public HTTPS pages that load without authentication. The deletion page must provide a clear request path without requiring the app to be reinstalled.
+All URLs must be distinct public HTTPS pages that load without authentication. Localhost, example domains, and placeholder endpoints are rejected. The deletion page must provide a clear request path without requiring the app to be reinstalled or the user to sign in.
 
 ## Play Console account and app setup
 
@@ -56,7 +67,7 @@ All URLs must be public HTTPS pages that load without authentication. The deleti
 - [ ] At least four accurate 1080 × 1920 phone screenshots uploaded.
 - [ ] Screenshots contain fictional data and no private notes or account information.
 - [ ] Hindi and Telugu listing text and screenshots are reviewed before enabling localized promotion.
-- [ ] Support, privacy, and deletion links open successfully from a logged-out browser.
+- [ ] Support, privacy, terms, and deletion links open successfully from a logged-out browser.
 
 ## Device and accessibility validation
 
@@ -82,4 +93,4 @@ All URLs must be public HTTPS pages that load without authentication. The deleti
 
 ## Release record
 
-Archive the commit SHA, signed AAB checksum, mapping file, native symbols if any, Data Safety export, content-rating certificate, screenshots, store copy, policy URLs, Supabase migration state, test evidence, rollout decision, and release notes together.
+Archive the commit SHA, signed AAB checksum, mapping file, native symbols if any, Data Safety export, content-rating certificate, screenshots, store copy, policy URLs, deployed public-site version, Supabase migration state, test evidence, rollout decision, and release notes together.

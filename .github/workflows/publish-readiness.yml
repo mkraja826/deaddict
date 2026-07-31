@@ -59,6 +59,7 @@ jobs:
           DEADDICT_SUPPORT_EMAIL: ${{ secrets.DEADDICT_SUPPORT_EMAIL }}
           DEADDICT_SUPPORT_URL: ${{ secrets.DEADDICT_SUPPORT_URL }}
           DEADDICT_PRIVACY_POLICY_URL: ${{ secrets.DEADDICT_PRIVACY_POLICY_URL }}
+          DEADDICT_TERMS_URL: ${{ secrets.DEADDICT_TERMS_URL }}
           DEADDICT_ACCOUNT_DELETION_URL: ${{ secrets.DEADDICT_ACCOUNT_DELETION_URL }}
         run: |
           set -euo pipefail
@@ -74,6 +75,7 @@ jobs:
             DEADDICT_SUPPORT_EMAIL \
             DEADDICT_SUPPORT_URL \
             DEADDICT_PRIVACY_POLICY_URL \
+            DEADDICT_TERMS_URL \
             DEADDICT_ACCOUNT_DELETION_URL
           do
             test -n "${!name}" || { echo "$name is missing"; exit 1; }
@@ -99,6 +101,7 @@ jobs:
           DEADDICT_SUPPORT_EMAIL: ${{ secrets.DEADDICT_SUPPORT_EMAIL }}
           DEADDICT_SUPPORT_URL: ${{ secrets.DEADDICT_SUPPORT_URL }}
           DEADDICT_PRIVACY_POLICY_URL: ${{ secrets.DEADDICT_PRIVACY_POLICY_URL }}
+          DEADDICT_TERMS_URL: ${{ secrets.DEADDICT_TERMS_URL }}
           DEADDICT_ACCOUNT_DELETION_URL: ${{ secrets.DEADDICT_ACCOUNT_DELETION_URL }}
           DEADDICT_ROLLOUT_PERCENT: ${{ inputs.rollout_percent }}
           DEADDICT_ALLOW_WIDE_ROLLOUT: ${{ inputs.allow_wide_rollout }}
@@ -132,3 +135,4 @@ jobs:
             **/build/reports/**
             docs/legal/**
             docs/play/**
+            docs/site/**

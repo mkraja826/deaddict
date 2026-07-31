@@ -21,6 +21,14 @@
     <string name="accessibility_hidden">దాచబడింది</string>
     <string name="accessibility_selected">ఎంచుకోబడింది</string>
     <string name="accessibility_not_selected">ఎంచుకోబడలేదు</string>
+    <string name="public_resources_button">సహాయం మరియు చట్టపరమైన సమాచారం</string>
+    <string name="public_resources_title">సహాయం మరియు చట్టపరమైన వనరులు</string>
+    <string name="public_resources_description">DeAddict పబ్లిక్ విధానాలు, సహాయ పేజీ లేదా బాహ్య ఖాతా తొలగింపు సూచనలను తెరవండి.</string>
+    <string name="privacy_policy">గోప్యతా విధానం</string>
+    <string name="terms_of_service">సేవా నిబంధనలు</string>
+    <string name="support_center">సహాయ కేంద్రం</string>
+    <string name="account_deletion_help">ఖాతా తొలగింపు సహాయం</string>
+    <string name="close">మూసివేయండి</string>
     <plurals name="accessibility_day_streak">
         <item quantity="one">%d రోజు పరంపర</item>
         <item quantity="other">%d రోజుల పరంపర</item>
