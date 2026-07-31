@@ -61,7 +61,7 @@ class RookMessageEngineTest {
         activeTrackCount: Int = 2,
         slipRecorded: Boolean = false,
     ) = RookContext(
-        moment = RookMoment.RESCUE,
+        moment = LegacyRookMoment.RESCUE,
         programName = "Smoking",
         activeTrackCount = activeTrackCount,
         requestedTone = requestedTone,
