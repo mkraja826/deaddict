@@ -42,8 +42,10 @@ class LocalInsightsRepository(
             .toLocalDate()
             .toEpochDay()
         val startEpochDay = endEpochDay - window.days + 1
+        val dailyCheckInDao = database.dailyCheckInDao()
+        val rescues = database.rescueDao().sinceTrack(recoveryTrackId.value, since)
         val goalProgress = GoalProgressAnalyzer.analyze(
-            rows = database.dailyCheckInDao().progressRows(
+            rows = dailyCheckInDao.progressRows(
                 ownerKey = track.ownerKey,
                 recoveryTrackId = recoveryTrackId.value,
                 startEpochDay = startEpochDay,
@@ -54,15 +56,25 @@ class LocalInsightsRepository(
             nowMillis = nowMillis,
             zoneId = zoneId,
         )
+        val crossTrackInsights = CrossTrackInsightAnalyzer.analyze(
+            rows = dailyCheckInDao.crossTrackOutcomeRows(
+                ownerKey = track.ownerKey,
+                selectedRecoveryTrackId = recoveryTrackId.value,
+                startEpochDay = startEpochDay,
+                endEpochDay = endEpochDay,
+            ),
+            rescues = rescues,
+        )
         val behavioral = InsightAnalyzer.analyze(
             tracking = database.trackingDao().sinceTrack(recoveryTrackId.value, since),
-            rescues = database.rescueDao().sinceTrack(recoveryTrackId.value, since),
+            rescues = rescues,
             zoneId = zoneId,
             window = window,
         )
         val goalExplanation = goalProgress?.currentGoal?.let(::progressExplanation)
         return behavioral.copy(
             goalProgress = goalProgress,
+            crossTrackInsights = crossTrackInsights,
             explanation = listOfNotNull(
                 behavioral.explanation.takeIf(String::isNotBlank),
                 goalExplanation,

@@ -33,6 +33,7 @@ data class SevenDayInsights(
     val triggerFrequencies: List<TriggerFrequency> = emptyList(),
     val rescueEffectivenessPercent: Int? = null,
     val goalProgress: GoalProgressSummary? = null,
+    val crossTrackInsights: CrossTrackInsightSummary? = null,
 )
 
 object InsightAnalyzer {
