@@ -34,6 +34,9 @@ import com.deaddict.app.ui.GoalProgressInsightsScreen
 import com.deaddict.app.ui.InsightsControlsViewModel
 import com.deaddict.app.ui.PublicResourcesAction
 import com.deaddict.app.ui.RecoveryTrackAppRoot
+import com.deaddict.app.ui.RookCoachAction
+import com.deaddict.app.ui.RookSettingsAction
+import com.deaddict.app.ui.RookSettingsViewModel
 import com.deaddict.app.ui.recoveryPane
 import com.deaddict.app.ui.theme.DeAddictTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -43,6 +46,7 @@ class MainActivity : FragmentActivity() {
     private val viewModel: AppViewModel by viewModels()
     private val dailyCheckInViewModel: DailyCheckInViewModel by viewModels()
     private val insightsControlsViewModel: InsightsControlsViewModel by viewModels()
+    private val rookSettingsViewModel: RookSettingsViewModel by viewModels()
     private var biometricAuthenticated by mutableStateOf(false)
     private var biometricPromptShowing = false
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -72,6 +76,10 @@ class MainActivity : FragmentActivity() {
                 !state.isLoading &&
                 !state.requiresOnboarding &&
                 state.selectedTab == AppTab.YOU
+            val showRookCoach = isAppUnlocked &&
+                !state.isLoading &&
+                !state.requiresOnboarding &&
+                state.selectedTab != AppTab.YOU
             SideEffect {
                 if (state.privacyPreferences.screenProtectionEnabled) {
                     window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -165,6 +173,7 @@ class MainActivity : FragmentActivity() {
                             onUsageMonitoringChanged = viewModel::setUsageMonitoringEnabled,
                             onDeleteLocalData = {
                                 insightsControlsViewModel.clearPreferences()
+                                rookSettingsViewModel.clear()
                                 viewModel.deleteLocalRecoveryData()
                             },
                             onPurchasePlus = { offerToken ->
@@ -187,6 +196,21 @@ class MainActivity : FragmentActivity() {
                             onOnboardingComplete = viewModel::completeOnboarding,
                         )
                     }
+                    RookCoachAction(
+                        appState = state,
+                        dailyCheckInState = dailyCheckInState,
+                        insightsState = insightsControlsState,
+                        visible = showRookCoach,
+                    )
+                    RookSettingsAction(
+                        visible = showYouActions,
+                        preferences = state.rookPreferences,
+                        selectedTrack = state.selectedRecoveryTrack,
+                        onEnabledChanged = rookSettingsViewModel::setEnabled,
+                        onDefaultToneChanged = rookSettingsViewModel::setDefaultTone,
+                        onAvatarVisibleChanged = rookSettingsViewModel::setAvatarVisible,
+                        onTrackToneChanged = rookSettingsViewModel::setTrackTone,
+                    )
                     PublicResourcesAction(
                         visible = showYouActions,
                         onPrivacyPolicy = { openExternalPage(BuildConfig.PRIVACY_POLICY_URL) },
@@ -201,6 +225,7 @@ class MainActivity : FragmentActivity() {
                         inProgress = state.accountDeletionInProgress,
                         onConfirm = {
                             insightsControlsViewModel.clearPreferences()
+                            rookSettingsViewModel.clear()
                             viewModel.deleteAccount()
                         },
                     )
