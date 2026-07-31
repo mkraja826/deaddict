@@ -1,10 +1,12 @@
 package com.deaddict.app.sync
 
 import com.deaddict.database.entity.ActiveProgramEntity
+import com.deaddict.database.entity.DailyCheckInEntity
 import com.deaddict.database.entity.RecoveryGoalVersionEntity
 import com.deaddict.database.entity.RecoveryTrackEntity
 import com.deaddict.database.entity.RescueSessionEntity
 import com.deaddict.database.entity.SyncAggregateType
+import com.deaddict.database.entity.TrackCheckInEntryEntity
 import com.deaddict.database.entity.TrackingEventEntity
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
@@ -19,6 +21,8 @@ data class CloudSnapshot(
     val rescueSessions: List<RemoteRescueRecord>,
     val recoveryTracks: List<RemoteRecoveryTrackRecord> = emptyList(),
     val recoveryGoals: List<RemoteRecoveryGoalRecord> = emptyList(),
+    val dailyCheckIns: List<RemoteDailyCheckInRecord> = emptyList(),
+    val trackCheckInEntries: List<RemoteTrackCheckInEntryRecord> = emptyList(),
 )
 
 data class RemoteProgramRecord(
@@ -56,6 +60,34 @@ data class RemoteRecoveryGoalRecord(
     val title: String?,
     val effectiveFromEpochMillis: Long,
     val effectiveUntilEpochMillis: Long?,
+    val createdAtEpochMillis: Long,
+    val clientUpdatedAtEpochMillis: Long,
+    val revision: Long,
+)
+
+data class RemoteDailyCheckInRecord(
+    val id: String,
+    val userId: String,
+    val localDateEpochDay: Long,
+    val mood: Int?,
+    val stress: Int?,
+    val energy: Int?,
+    val sleepQuality: Int?,
+    val createdAtEpochMillis: Long,
+    val clientUpdatedAtEpochMillis: Long,
+    val revision: Long,
+)
+
+data class RemoteTrackCheckInEntryRecord(
+    val id: String,
+    val userId: String,
+    val localDateEpochDay: Long,
+    val recoveryTrackId: String,
+    val goalVersionId: String?,
+    val outcome: String,
+    val measuredValue: Double?,
+    val unitKey: String?,
+    val peakUrge: Int?,
     val createdAtEpochMillis: Long,
     val clientUpdatedAtEpochMillis: Long,
     val revision: Long,
@@ -101,6 +133,14 @@ interface RemoteSyncGateway {
     suspend fun upsertRecoveryTrack(userId: String, track: RecoveryTrackEntity)
 
     suspend fun upsertRecoveryGoal(userId: String, goal: RecoveryGoalVersionEntity)
+
+    suspend fun upsertDailyCheckIn(userId: String, checkIn: DailyCheckInEntity)
+
+    suspend fun upsertTrackCheckInEntry(
+        userId: String,
+        checkIn: DailyCheckInEntity,
+        entry: TrackCheckInEntryEntity,
+    )
 
     suspend fun upsertTrackingEvent(userId: String, event: TrackingEventEntity)
 
@@ -175,6 +215,53 @@ class SupabaseRemoteSyncGateway(
         )
     }
 
+    override suspend fun upsertDailyCheckIn(userId: String, checkIn: DailyCheckInEntity) {
+        requireClient().from("daily_check_ins").upsert(
+            CloudDailyCheckIn(
+                id = checkIn.id,
+                userId = userId,
+                localDateEpochDay = checkIn.localDateEpochDay,
+                mood = checkIn.mood,
+                stress = checkIn.stress,
+                energy = checkIn.energy,
+                sleepQuality = checkIn.sleepQuality,
+                createdAt = checkIn.createdAtEpochMillis.toIsoInstant(),
+                clientUpdatedAt = checkIn.updatedAtEpochMillis.toIsoInstant(),
+                revision = checkIn.revision,
+            ),
+        ) {
+            onConflict = "user_id,local_date_epoch_day"
+        }
+    }
+
+    override suspend fun upsertTrackCheckInEntry(
+        userId: String,
+        checkIn: DailyCheckInEntity,
+        entry: TrackCheckInEntryEntity,
+    ) {
+        require(entry.dailyCheckInId == checkIn.id) {
+            "Track check-in entry must belong to the supplied daily check-in"
+        }
+        requireClient().from("track_check_in_entries").upsert(
+            CloudTrackCheckInEntry(
+                id = entry.id,
+                userId = userId,
+                localDateEpochDay = checkIn.localDateEpochDay,
+                recoveryTrackId = entry.recoveryTrackId,
+                goalVersionId = entry.goalVersionId,
+                outcome = entry.outcome.name,
+                measuredValue = entry.measuredValue,
+                unitKey = entry.unitKey,
+                peakUrge = entry.peakUrge,
+                createdAt = entry.createdAtEpochMillis.toIsoInstant(),
+                clientUpdatedAt = entry.updatedAtEpochMillis.toIsoInstant(),
+                revision = entry.revision,
+            ),
+        ) {
+            onConflict = "user_id,local_date_epoch_day,recovery_track_id"
+        }
+    }
+
     override suspend fun upsertTrackingEvent(userId: String, event: TrackingEventEntity) {
         val recoveryTrackId = checkNotNull(event.recoveryTrackId) {
             "Cloud-eligible tracking events require a permanent Recovery Track"
@@ -227,10 +314,24 @@ class SupabaseRemoteSyncGateway(
         aggregateType: SyncAggregateType,
         aggregateId: String,
     ) {
+        if (aggregateType == SyncAggregateType.DAILY_CHECK_IN) {
+            val localDateEpochDay = aggregateId.toLongOrNull()
+                ?: throw IllegalArgumentException("Daily check-in delete requires a local date")
+            requireClient().from("daily_check_ins").delete {
+                filter {
+                    eq("user_id", userId)
+                    eq("local_date_epoch_day", localDateEpochDay)
+                }
+            }
+            return
+        }
+
         val table = when (aggregateType) {
             SyncAggregateType.ACTIVE_PROGRAM -> "user_programs"
             SyncAggregateType.RECOVERY_TRACK -> "recovery_tracks"
             SyncAggregateType.RECOVERY_GOAL -> "recovery_goal_versions"
+            SyncAggregateType.DAILY_CHECK_IN -> error("Daily check-in deletes are handled above")
+            SyncAggregateType.TRACK_CHECK_IN_ENTRY -> "track_check_in_entries"
             SyncAggregateType.TRACKING_EVENT -> "tracking_events"
             SyncAggregateType.RESCUE_SESSION -> "rescue_sessions"
         }
@@ -265,6 +366,14 @@ class SupabaseRemoteSyncGateway(
                 .select()
                 .decodeList<CloudRecoveryGoal>()
                 .map(CloudRecoveryGoal::toRemoteRecord),
+            dailyCheckIns = supabase.from("daily_check_ins")
+                .select()
+                .decodeList<CloudDailyCheckIn>()
+                .map(CloudDailyCheckIn::toRemoteRecord),
+            trackCheckInEntries = supabase.from("track_check_in_entries")
+                .select()
+                .decodeList<CloudTrackCheckInEntry>()
+                .map(CloudTrackCheckInEntry::toRemoteRecord),
         )
     }
 
@@ -350,6 +459,64 @@ private data class CloudRecoveryGoal(
         title = title,
         effectiveFromEpochMillis = effectiveFrom.toEpochMillis(),
         effectiveUntilEpochMillis = effectiveUntil?.toEpochMillis(),
+        createdAtEpochMillis = createdAt.toEpochMillis(),
+        clientUpdatedAtEpochMillis = clientUpdatedAt.toEpochMillis(),
+        revision = revision,
+    )
+}
+
+@Serializable
+private data class CloudDailyCheckIn(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("local_date_epoch_day") val localDateEpochDay: Long,
+    val mood: Int?,
+    val stress: Int?,
+    val energy: Int?,
+    @SerialName("sleep_quality") val sleepQuality: Int?,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("client_updated_at") val clientUpdatedAt: String,
+    val revision: Long,
+) {
+    fun toRemoteRecord() = RemoteDailyCheckInRecord(
+        id = id,
+        userId = userId,
+        localDateEpochDay = localDateEpochDay,
+        mood = mood,
+        stress = stress,
+        energy = energy,
+        sleepQuality = sleepQuality,
+        createdAtEpochMillis = createdAt.toEpochMillis(),
+        clientUpdatedAtEpochMillis = clientUpdatedAt.toEpochMillis(),
+        revision = revision,
+    )
+}
+
+@Serializable
+private data class CloudTrackCheckInEntry(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("local_date_epoch_day") val localDateEpochDay: Long,
+    @SerialName("recovery_track_id") val recoveryTrackId: String,
+    @SerialName("goal_version_id") val goalVersionId: String?,
+    val outcome: String,
+    @SerialName("measured_value") val measuredValue: Double?,
+    @SerialName("unit_key") val unitKey: String?,
+    @SerialName("peak_urge") val peakUrge: Int?,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("client_updated_at") val clientUpdatedAt: String,
+    val revision: Long,
+) {
+    fun toRemoteRecord() = RemoteTrackCheckInEntryRecord(
+        id = id,
+        userId = userId,
+        localDateEpochDay = localDateEpochDay,
+        recoveryTrackId = recoveryTrackId,
+        goalVersionId = goalVersionId,
+        outcome = outcome,
+        measuredValue = measuredValue,
+        unitKey = unitKey,
+        peakUrge = peakUrge,
         createdAtEpochMillis = createdAt.toEpochMillis(),
         clientUpdatedAtEpochMillis = clientUpdatedAt.toEpochMillis(),
         revision = revision,

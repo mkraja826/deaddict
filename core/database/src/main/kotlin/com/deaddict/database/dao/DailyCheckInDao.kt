@@ -5,6 +5,7 @@ import androidx.room.Embedded
 import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Transaction
+import androidx.room.Update
 import androidx.room.Upsert
 import com.deaddict.database.entity.DailyCheckInEntity
 import com.deaddict.database.entity.TrackCheckInEntryEntity
@@ -54,6 +55,30 @@ interface DailyCheckInDao {
     @Query("SELECT * FROM daily_check_ins WHERE id = :id LIMIT 1")
     suspend fun byId(id: String): DailyCheckInEntity?
 
+    @Query(
+        """
+        SELECT * FROM daily_check_ins
+        WHERE ownerKey = :ownerKey
+        ORDER BY localDateEpochDay, id
+        """,
+    )
+    suspend fun allForOwner(ownerKey: String): List<DailyCheckInEntity>
+
+    @Query("SELECT * FROM track_check_in_entries WHERE id = :id LIMIT 1")
+    suspend fun entryById(id: String): TrackCheckInEntryEntity?
+
+    @Query(
+        """
+        SELECT * FROM track_check_in_entries
+        WHERE dailyCheckInId = :dailyCheckInId AND recoveryTrackId = :recoveryTrackId
+        LIMIT 1
+        """,
+    )
+    suspend fun entryForTrack(
+        dailyCheckInId: String,
+        recoveryTrackId: String,
+    ): TrackCheckInEntryEntity?
+
     @Query("SELECT * FROM track_check_in_entries WHERE dailyCheckInId = :dailyCheckInId")
     suspend fun entries(dailyCheckInId: String): List<TrackCheckInEntryEntity>
 
@@ -61,7 +86,25 @@ interface DailyCheckInDao {
     suspend fun upsertCheckIn(checkIn: DailyCheckInEntity)
 
     @Upsert
+    suspend fun upsertEntry(entry: TrackCheckInEntryEntity)
+
+    @Upsert
     suspend fun upsertEntries(entries: List<TrackCheckInEntryEntity>)
+
+    @Update
+    suspend fun updateCheckIn(checkIn: DailyCheckInEntity): Int
+
+    @Update
+    suspend fun updateEntry(entry: TrackCheckInEntryEntity): Int
+
+    @Query("UPDATE daily_check_ins SET syncState = 'SYNCED' WHERE id = :id")
+    suspend fun markCheckInSynced(id: String): Int
+
+    @Query("UPDATE track_check_in_entries SET syncState = 'SYNCED' WHERE id = :id")
+    suspend fun markEntrySynced(id: String): Int
+
+    @Query("DELETE FROM track_check_in_entries WHERE id = :id")
+    suspend fun deleteEntryById(id: String): Int
 
     @Query("DELETE FROM track_check_in_entries WHERE dailyCheckInId = :dailyCheckInId")
     suspend fun deleteEntries(dailyCheckInId: String): Int

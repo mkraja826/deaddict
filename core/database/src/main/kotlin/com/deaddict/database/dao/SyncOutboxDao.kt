@@ -20,8 +20,10 @@ interface SyncOutboxDao {
                 WHEN 'RECOVERY_TRACK' THEN 0
                 WHEN 'RECOVERY_GOAL' THEN 1
                 WHEN 'ACTIVE_PROGRAM' THEN 2
-                WHEN 'TRACKING_EVENT' THEN 3
-                WHEN 'RESCUE_SESSION' THEN 3
+                WHEN 'DAILY_CHECK_IN' THEN 3
+                WHEN 'TRACK_CHECK_IN_ENTRY' THEN 4
+                WHEN 'TRACKING_EVENT' THEN 5
+                WHEN 'RESCUE_SESSION' THEN 5
                 ELSE 9
             END,
             createdAtEpochMillis,

@@ -4,6 +4,10 @@ import androidx.room.withTransaction
 import com.deaddict.database.DeAddictDatabase
 import com.deaddict.database.dao.DailyCheckInWithEntries
 import com.deaddict.database.entity.DailyCheckInEntity
+import com.deaddict.database.entity.OutboxState
+import com.deaddict.database.entity.SyncAggregateType
+import com.deaddict.database.entity.SyncOperation
+import com.deaddict.database.entity.SyncOutboxEntity
 import com.deaddict.database.entity.SyncState
 import com.deaddict.database.entity.TrackCheckInEntryEntity
 import com.deaddict.database.entity.TrackCheckInOutcome
@@ -89,6 +93,7 @@ class LocalDailyCheckInRepository(
         val existing = dao.byDate(draft.ownerKey.value, draft.localDateEpochDay)
         val existingEntries = existing?.let { dao.entries(it.id) }.orEmpty()
             .associateBy(TrackCheckInEntryEntity::recoveryTrackId)
+        val nextState = draft.ownerKey.initialSyncState()
 
         val resolvedEntries = draft.entries.map { entry ->
             val track = checkNotNull(database.recoveryTrackDao().byId(entry.recoveryTrackId.value)) {
@@ -118,7 +123,7 @@ class LocalDailyCheckInRepository(
             createdAtEpochMillis = existing?.createdAtEpochMillis ?: now,
             updatedAtEpochMillis = now,
             revision = existing?.revision?.plus(1) ?: 0,
-            syncState = SyncState.LOCAL_ONLY,
+            syncState = nextState,
         )
         dao.upsertCheckIn(checkIn)
 
@@ -137,17 +142,169 @@ class LocalDailyCheckInRepository(
                 createdAtEpochMillis = previous?.createdAtEpochMillis ?: now,
                 updatedAtEpochMillis = now,
                 revision = previous?.revision?.plus(1) ?: 0,
-                syncState = SyncState.LOCAL_ONLY,
+                syncState = nextState,
             )
         }
         // Entries omitted from an edit can belong to a track paused or archived later that day.
         // Preserve them so lifecycle changes never erase an already-recorded Recovery Track outcome.
         dao.upsertEntries(entries)
+        enqueueCheckInIfNeeded(checkIn, now)
+        entries.forEach { enqueueEntryIfNeeded(it, now) }
         checkInId
     }
 
-    suspend fun delete(id: String): Boolean = database.withTransaction {
-        database.dailyCheckInDao().deleteById(id) == 1
+    suspend fun reconcileOwner(from: OwnerKey, to: OwnerKey): Int = database.withTransaction {
+        if (from == to) return@withTransaction 0
+        require(!from.isAuthenticated || to.isAuthenticated) {
+            "Authenticated daily check-ins cannot be reassigned to a guest profile"
+        }
+
+        val dao = database.dailyCheckInDao()
+        val sourceCheckIns = dao.allForOwner(from.value)
+        if (sourceCheckIns.isEmpty()) return@withTransaction 0
+        val now = clock.nowMillis()
+        val destinationState = to.initialSyncState()
+
+        for (source in sourceCheckIns) {
+            val sourceEntries = dao.entries(source.id)
+            val target = dao.byDate(to.value, source.localDateEpochDay)
+            if (target == null) {
+                val adopted = source.copy(
+                    ownerKey = to.value,
+                    updatedAtEpochMillis = now,
+                    revision = source.revision + 1,
+                    syncState = destinationState,
+                )
+                check(dao.updateCheckIn(adopted) == 1)
+                enqueueCheckInIfNeeded(adopted, now)
+                for (entry in sourceEntries) {
+                    val adoptedEntry = entry.copy(
+                        updatedAtEpochMillis = now,
+                        revision = entry.revision + 1,
+                        syncState = destinationState,
+                    )
+                    check(dao.updateEntry(adoptedEntry) == 1)
+                    enqueueEntryIfNeeded(adoptedEntry, now)
+                }
+                continue
+            }
+
+            val mergedTarget = target.copy(
+                mood = target.mood ?: source.mood,
+                stress = target.stress ?: source.stress,
+                energy = target.energy ?: source.energy,
+                sleepQuality = target.sleepQuality ?: source.sleepQuality,
+                updatedAtEpochMillis = now,
+                revision = target.revision + 1,
+                syncState = destinationState,
+            )
+            check(dao.updateCheckIn(mergedTarget) == 1)
+            enqueueCheckInIfNeeded(mergedTarget, now)
+
+            val targetTrackIds = dao.entries(target.id)
+                .mapTo(mutableSetOf(), TrackCheckInEntryEntity::recoveryTrackId)
+            for (entry in sourceEntries) {
+                if (entry.recoveryTrackId in targetTrackIds) {
+                    check(dao.deleteEntryById(entry.id) == 1)
+                    continue
+                }
+                val adoptedEntry = entry.copy(
+                    dailyCheckInId = target.id,
+                    updatedAtEpochMillis = now,
+                    revision = entry.revision + 1,
+                    syncState = destinationState,
+                )
+                check(dao.updateEntry(adoptedEntry) == 1)
+                enqueueEntryIfNeeded(adoptedEntry, now)
+                targetTrackIds += adoptedEntry.recoveryTrackId
+            }
+            check(dao.deleteById(source.id) == 1)
+        }
+        sourceCheckIns.size
+    }
+
+    suspend fun delete(ownerKey: OwnerKey, id: String): Boolean = database.withTransaction {
+        val dao = database.dailyCheckInDao()
+        val checkIn = dao.byId(id) ?: return@withTransaction false
+        require(checkIn.ownerKey == ownerKey.value) { "Daily check-in belongs to another owner" }
+        val entries = dao.entries(id)
+        val now = clock.nowMillis()
+        if (checkIn.syncState != SyncState.LOCAL_ONLY) {
+            database.syncOutboxDao().supersedePendingUpsert(
+                SyncAggregateType.DAILY_CHECK_IN.name,
+                checkIn.id,
+            )
+            entries.forEach { entry ->
+                database.syncOutboxDao().supersedePendingUpsert(
+                    SyncAggregateType.TRACK_CHECK_IN_ENTRY.name,
+                    entry.id,
+                )
+            }
+            enqueueDailyDelete(checkIn.localDateEpochDay, checkIn.revision, now)
+        }
+        dao.deleteById(id) == 1
+    }
+
+    private suspend fun enqueueCheckInIfNeeded(checkIn: DailyCheckInEntity, now: Long) {
+        if (checkIn.syncState == SyncState.LOCAL_ONLY) return
+        enqueueUpsert(
+            aggregateType = SyncAggregateType.DAILY_CHECK_IN,
+            aggregateId = checkIn.id,
+            revision = checkIn.revision,
+            now = now,
+        )
+    }
+
+    private suspend fun enqueueEntryIfNeeded(entry: TrackCheckInEntryEntity, now: Long) {
+        if (entry.syncState == SyncState.LOCAL_ONLY) return
+        enqueueUpsert(
+            aggregateType = SyncAggregateType.TRACK_CHECK_IN_ENTRY,
+            aggregateId = entry.id,
+            revision = entry.revision,
+            now = now,
+        )
+    }
+
+    private suspend fun enqueueUpsert(
+        aggregateType: SyncAggregateType,
+        aggregateId: String,
+        revision: Long,
+        now: Long,
+    ) {
+        database.syncOutboxDao().enqueue(
+            SyncOutboxEntity(
+                id = ids.next(),
+                idempotencyKey = "${aggregateType.name}:$aggregateId:UPSERT:$revision",
+                aggregateType = aggregateType,
+                aggregateId = aggregateId,
+                operation = SyncOperation.UPSERT,
+                payload = """{"id":"$aggregateId","revision":$revision}""",
+                createdAtEpochMillis = now,
+                nextAttemptAtEpochMillis = now,
+                state = OutboxState.PENDING,
+            ),
+        )
+    }
+
+    private suspend fun enqueueDailyDelete(
+        localDateEpochDay: Long,
+        revision: Long,
+        now: Long,
+    ) {
+        val aggregateId = localDateEpochDay.toString()
+        database.syncOutboxDao().enqueue(
+            SyncOutboxEntity(
+                id = ids.next(),
+                idempotencyKey = "${SyncAggregateType.DAILY_CHECK_IN.name}:$aggregateId:DELETE:$revision",
+                aggregateType = SyncAggregateType.DAILY_CHECK_IN,
+                aggregateId = aggregateId,
+                operation = SyncOperation.DELETE,
+                payload = """{"localDateEpochDay":$localDateEpochDay}""",
+                createdAtEpochMillis = now,
+                nextAttemptAtEpochMillis = now,
+                state = OutboxState.PENDING,
+            ),
+        )
     }
 
     private companion object {
@@ -159,3 +316,6 @@ class LocalDailyCheckInRepository(
         )
     }
 }
+
+private fun OwnerKey.initialSyncState(): SyncState =
+    if (isAuthenticated) SyncState.PENDING else SyncState.LOCAL_ONLY
