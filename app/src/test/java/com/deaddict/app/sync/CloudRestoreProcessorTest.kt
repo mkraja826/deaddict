@@ -1,10 +1,12 @@
 package com.deaddict.app.sync
 
 import com.deaddict.database.entity.ActiveProgramEntity
+import com.deaddict.database.entity.DailyCheckInEntity
 import com.deaddict.database.entity.RecoveryGoalVersionEntity
 import com.deaddict.database.entity.RecoveryTrackEntity
 import com.deaddict.database.entity.RescueSessionEntity
 import com.deaddict.database.entity.SyncAggregateType
+import com.deaddict.database.entity.TrackCheckInEntryEntity
 import com.deaddict.database.entity.TrackingEventEntity
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -74,18 +76,49 @@ class CloudRestoreProcessorTest {
                     revision = 0,
                 ),
             ),
+            dailyCheckIns = listOf(
+                RemoteDailyCheckInRecord(
+                    id = "00000000-0000-0000-0000-000000000003",
+                    userId = "user-1",
+                    localDateEpochDay = 20_000L,
+                    mood = 4,
+                    stress = 2,
+                    energy = 3,
+                    sleepQuality = 4,
+                    createdAtEpochMillis = 1_000L,
+                    clientUpdatedAtEpochMillis = 1_100L,
+                    revision = 0,
+                ),
+            ),
+            trackCheckInEntries = listOf(
+                RemoteTrackCheckInEntryRecord(
+                    id = "00000000-0000-0000-0000-000000000004",
+                    userId = "user-1",
+                    localDateEpochDay = 20_000L,
+                    recoveryTrackId = trackId,
+                    goalVersionId = "00000000-0000-0000-0000-000000000002",
+                    outcome = "GOAL_MET",
+                    measuredValue = null,
+                    unitKey = null,
+                    peakUrge = 3,
+                    createdAtEpochMillis = 1_000L,
+                    clientUpdatedAtEpochMillis = 1_100L,
+                    revision = 0,
+                ),
+            ),
         )
         val store = RecordingRestoreStore(
-            summary = RestoreSummary(inserted = 3, updated = 0, skipped = 0),
+            summary = RestoreSummary(inserted = 5, updated = 0, skipped = 0),
         )
         val remote = RestoreRemoteGateway(snapshot = snapshot)
 
         val result = CloudRestoreProcessor(store, remote).restore()
 
-        assertEquals(RestoreSummary(3, 0, 0), result)
+        assertEquals(RestoreSummary(5, 0, 0), result)
         assertSame(snapshot, store.appliedSnapshot)
         assertEquals(1, remote.downloadCount)
         assertEquals(trackId, store.appliedSnapshot?.recoveryGoals?.single()?.recoveryTrackId)
+        assertEquals(20_000L, store.appliedSnapshot?.trackCheckInEntries?.single()?.localDateEpochDay)
     }
 }
 
@@ -114,6 +147,14 @@ private class RestoreRemoteGateway(
     override suspend fun upsertRecoveryTrack(userId: String, track: RecoveryTrackEntity) = Unit
 
     override suspend fun upsertRecoveryGoal(userId: String, goal: RecoveryGoalVersionEntity) = Unit
+
+    override suspend fun upsertDailyCheckIn(userId: String, checkIn: DailyCheckInEntity) = Unit
+
+    override suspend fun upsertTrackCheckInEntry(
+        userId: String,
+        checkIn: DailyCheckInEntity,
+        entry: TrackCheckInEntryEntity,
+    ) = Unit
 
     override suspend fun upsertTrackingEvent(userId: String, event: TrackingEventEntity) = Unit
 

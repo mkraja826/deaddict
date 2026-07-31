@@ -1,6 +1,7 @@
 package com.deaddict.app.sync
 
 import com.deaddict.database.entity.ActiveProgramEntity
+import com.deaddict.database.entity.DailyCheckInEntity
 import com.deaddict.database.entity.RecoveryGoalVersionEntity
 import com.deaddict.database.entity.RecoveryTrackEntity
 import com.deaddict.database.entity.RescueSessionEntity
@@ -8,8 +9,11 @@ import com.deaddict.database.entity.SyncAggregateType
 import com.deaddict.database.entity.SyncOperation
 import com.deaddict.database.entity.SyncOutboxEntity
 import com.deaddict.database.entity.SyncState
+import com.deaddict.database.entity.TrackCheckInEntryEntity
+import com.deaddict.database.entity.TrackCheckInOutcome
 import com.deaddict.database.entity.TrackingEventEntity
 import com.deaddict.database.entity.TrackingEventKind
+import com.deaddict.model.RecoveryGoalType
 import com.deaddict.model.RecoveryTrackRole
 import com.deaddict.model.RecoveryTrackStatus
 import kotlinx.coroutines.runBlocking
@@ -50,6 +54,73 @@ class SyncProcessorTest {
         assertEquals(SyncRunResult.SUCCESS, result)
         assertEquals(listOf(TRACK_ID), remote.uploadedTrackIds)
         assertEquals(listOf("outbox-track-1"), store.completedIds)
+    }
+
+    @Test
+    fun `daily check-in uploads parent before track entry`() = runBlocking {
+        val store = FakeSyncStore(
+            items = mutableListOf(dailyCheckInItem(), trackCheckInEntryItem()),
+            track = recoveryTrack(),
+            goal = recoveryGoal(),
+            dailyCheckIn = dailyCheckIn(),
+            trackCheckInEntry = trackCheckInEntry(),
+        )
+        val remote = FakeRemoteSyncGateway()
+
+        val result = SyncProcessor(store, remote).runBatch()
+
+        assertEquals(SyncRunResult.SUCCESS, result)
+        assertEquals(
+            listOf("daily:$CHECK_IN_ID", "entry:$ENTRY_ID:$LOCAL_DATE_EPOCH_DAY"),
+            remote.dailyUploadOrder,
+        )
+        assertEquals(listOf("outbox-daily-1", "outbox-entry-1"), store.completedIds)
+        assertTrue(store.failures.isEmpty())
+    }
+
+    @Test
+    fun `daily check-in from another account is dead lettered`() = runBlocking {
+        val store = FakeSyncStore(
+            items = mutableListOf(dailyCheckInItem()),
+            dailyCheckIn = dailyCheckIn().copy(ownerKey = "user:another-user"),
+        )
+        val remote = FakeRemoteSyncGateway()
+
+        val result = SyncProcessor(store, remote).runBatch()
+
+        assertEquals(SyncRunResult.IDLE, result)
+        assertEquals(
+            listOf(Failure("outbox-daily-1", "ACCOUNT_SCOPE_MISMATCH", permanent = true)),
+            store.failures,
+        )
+        assertTrue(remote.dailyUploadOrder.isEmpty())
+    }
+
+    @Test
+    fun `track check-in entry with mismatched goal is dead lettered`() = runBlocking {
+        val store = FakeSyncStore(
+            items = mutableListOf(trackCheckInEntryItem()),
+            track = recoveryTrack(),
+            goal = recoveryGoal().copy(recoveryTrackId = OTHER_TRACK_ID),
+            dailyCheckIn = dailyCheckIn(),
+            trackCheckInEntry = trackCheckInEntry(),
+        )
+        val remote = FakeRemoteSyncGateway()
+
+        val result = SyncProcessor(store, remote).runBatch()
+
+        assertEquals(SyncRunResult.IDLE, result)
+        assertEquals(
+            listOf(
+                Failure(
+                    "outbox-entry-1",
+                    "RECOVERY_GOAL_SCOPE_MISMATCH",
+                    permanent = true,
+                ),
+            ),
+            store.failures,
+        )
+        assertTrue(remote.dailyUploadOrder.isEmpty())
     }
 
     @Test
@@ -175,6 +246,8 @@ private class FakeSyncStore(
     private val tracking: TrackingEventEntity? = null,
     private val track: RecoveryTrackEntity? = null,
     private val goal: RecoveryGoalVersionEntity? = null,
+    private val dailyCheckIn: DailyCheckInEntity? = null,
+    private val trackCheckInEntry: TrackCheckInEntryEntity? = null,
 ) : SyncStore {
     val claimedIds = mutableListOf<String>()
     val completedIds = mutableListOf<String>()
@@ -194,6 +267,10 @@ private class FakeSyncStore(
     override suspend fun recoveryTrack(id: String): RecoveryTrackEntity? = track
 
     override suspend fun recoveryGoal(id: String): RecoveryGoalVersionEntity? = goal
+
+    override suspend fun dailyCheckIn(id: String): DailyCheckInEntity? = dailyCheckIn
+
+    override suspend fun trackCheckInEntry(id: String): TrackCheckInEntryEntity? = trackCheckInEntry
 
     override suspend fun trackingEvent(id: String): TrackingEventEntity? = tracking
 
@@ -215,6 +292,7 @@ private class FakeRemoteSyncGateway(
     override val available: Boolean = true
     val uploadedTrackingIds = mutableListOf<String>()
     val uploadedTrackIds = mutableListOf<String>()
+    val dailyUploadOrder = mutableListOf<String>()
     val deletedRecords = mutableListOf<Pair<SyncAggregateType, String>>()
 
     override suspend fun currentUserId(): String? = userId
@@ -227,6 +305,20 @@ private class FakeRemoteSyncGateway(
     }
 
     override suspend fun upsertRecoveryGoal(userId: String, goal: RecoveryGoalVersionEntity) = Unit
+
+    override suspend fun upsertDailyCheckIn(userId: String, checkIn: DailyCheckInEntity) {
+        if (failWrites) error("offline")
+        dailyUploadOrder += "daily:${checkIn.id}"
+    }
+
+    override suspend fun upsertTrackCheckInEntry(
+        userId: String,
+        checkIn: DailyCheckInEntity,
+        entry: TrackCheckInEntryEntity,
+    ) {
+        if (failWrites) error("offline")
+        dailyUploadOrder += "entry:${entry.id}:${checkIn.localDateEpochDay}"
+    }
 
     override suspend fun upsertTrackingEvent(userId: String, event: TrackingEventEntity) {
         if (failWrites) error("offline")
@@ -268,6 +360,28 @@ private fun recoveryTrackItem() = SyncOutboxEntity(
     payload = "{}",
     createdAtEpochMillis = 1_000L,
     nextAttemptAtEpochMillis = 1_000L,
+)
+
+private fun dailyCheckInItem() = SyncOutboxEntity(
+    id = "outbox-daily-1",
+    idempotencyKey = "DAILY_CHECK_IN:$CHECK_IN_ID:UPSERT:0",
+    aggregateType = SyncAggregateType.DAILY_CHECK_IN,
+    aggregateId = CHECK_IN_ID,
+    operation = SyncOperation.UPSERT,
+    payload = "{}",
+    createdAtEpochMillis = 1_000L,
+    nextAttemptAtEpochMillis = 1_000L,
+)
+
+private fun trackCheckInEntryItem() = SyncOutboxEntity(
+    id = "outbox-entry-1",
+    idempotencyKey = "TRACK_CHECK_IN_ENTRY:$ENTRY_ID:UPSERT:0",
+    aggregateType = SyncAggregateType.TRACK_CHECK_IN_ENTRY,
+    aggregateId = ENTRY_ID,
+    operation = SyncOperation.UPSERT,
+    payload = "{}",
+    createdAtEpochMillis = 1_001L,
+    nextAttemptAtEpochMillis = 1_001L,
 )
 
 private fun trackingDeleteItem() = SyncOutboxEntity(
@@ -315,4 +429,55 @@ private fun recoveryTrack() = RecoveryTrackEntity(
     syncState = SyncState.PENDING,
 )
 
+private fun recoveryGoal() = RecoveryGoalVersionEntity(
+    id = GOAL_ID,
+    recoveryTrackId = TRACK_ID,
+    goalType = RecoveryGoalType.AWARENESS_ONLY,
+    targetValue = null,
+    unitKey = null,
+    periodType = null,
+    title = null,
+    effectiveFromEpochMillis = 1_000L,
+    effectiveUntilEpochMillis = null,
+    createdAtEpochMillis = 1_000L,
+    updatedAtEpochMillis = 1_000L,
+    revision = 0,
+    syncState = SyncState.PENDING,
+)
+
+private fun dailyCheckIn() = DailyCheckInEntity(
+    id = CHECK_IN_ID,
+    ownerKey = "user:user-1",
+    localDateEpochDay = LOCAL_DATE_EPOCH_DAY,
+    mood = 4,
+    stress = 2,
+    energy = 3,
+    sleepQuality = 4,
+    createdAtEpochMillis = 1_000L,
+    updatedAtEpochMillis = 1_100L,
+    revision = 0,
+    syncState = SyncState.PENDING,
+)
+
+private fun trackCheckInEntry() = TrackCheckInEntryEntity(
+    id = ENTRY_ID,
+    dailyCheckInId = CHECK_IN_ID,
+    recoveryTrackId = TRACK_ID,
+    goalVersionId = GOAL_ID,
+    outcome = TrackCheckInOutcome.GOAL_MET,
+    measuredValue = null,
+    unitKey = null,
+    peakUrge = 3,
+    privateNote = "never upload this note",
+    createdAtEpochMillis = 1_000L,
+    updatedAtEpochMillis = 1_100L,
+    revision = 0,
+    syncState = SyncState.PENDING,
+)
+
 private const val TRACK_ID = "7ebdbd0b-4676-45f1-82cd-e632b3ec6092"
+private const val OTHER_TRACK_ID = "7ebdbd0b-4676-45f1-82cd-e632b3ec6093"
+private const val GOAL_ID = "7ebdbd0b-4676-45f1-82cd-e632b3ec6094"
+private const val CHECK_IN_ID = "7ebdbd0b-4676-45f1-82cd-e632b3ec6095"
+private const val ENTRY_ID = "7ebdbd0b-4676-45f1-82cd-e632b3ec6096"
+private const val LOCAL_DATE_EPOCH_DAY = 20_000L
