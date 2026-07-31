@@ -4,7 +4,7 @@ A production release is approved only when every blocking item below is complete
 
 ## Repository and build
 
-- [ ] `main` contains the complete Recovery Track, daily check-in, sync, Insights, accessibility, and production-readiness work.
+- [ ] `main` contains the complete Recovery Track, daily check-in, sync, Insights, Rook, accessibility, and production-readiness work.
 - [ ] Version is `1.0.0` with version code `100` or greater.
 - [ ] JVM tests, Android lint, database migration tests, release minification, and release-readiness checks pass.
 - [ ] Signed release AAB is built from a clean checkout of the approved commit.
@@ -64,8 +64,11 @@ All URLs must be distinct public HTTPS pages that load without authentication. L
 - [ ] App title and English short/full description are entered exactly from the approved listing document.
 - [ ] 512 × 512 app icon uploaded.
 - [ ] 1024 × 500 feature graphic uploaded.
-- [ ] At least four accurate 1080 × 1920 phone screenshots uploaded.
-- [ ] Screenshots contain fictional data and no private notes or account information.
+- [ ] **Capture Play Store screenshots** runs from the approved commit for the chosen light/dark theme.
+- [ ] The downloaded artifact contains five validated 1080 × 1920 PNG files.
+- [ ] At least four accurate phone screenshots are selected and uploaded.
+- [ ] Screenshots come only from the debug-only fictional preview and contain no private notes, accounts, billing identity, notifications, or real recovery records.
+- [ ] Screenshot navigation, Rook wording, privacy wording, safety boundaries, and feature availability match the signed candidate.
 - [ ] Hindi and Telugu listing text and screenshots are reviewed before enabling localized promotion.
 - [ ] Support, privacy, terms, and deletion links open successfully from a logged-out browser.
 
@@ -93,4 +96,4 @@ All URLs must be distinct public HTTPS pages that load without authentication. L
 
 ## Release record
 
-Archive the commit SHA, signed AAB checksum, mapping file, native symbols if any, Data Safety export, content-rating certificate, screenshots, store copy, policy URLs, deployed public-site version, Supabase migration state, test evidence, rollout decision, and release notes together.
+Archive the commit SHA, signed AAB checksum, mapping file, native symbols if any, Data Safety export, content-rating certificate, approved screenshot workflow artifact and run ID, store copy, policy URLs, deployed public-site version, Supabase migration state, test evidence, rollout decision, and release notes together.
