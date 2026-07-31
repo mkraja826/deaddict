@@ -2,6 +2,7 @@ package com.deaddict.app
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -31,6 +32,7 @@ import com.deaddict.app.ui.DailyCheckInTodayScreen
 import com.deaddict.app.ui.DailyCheckInViewModel
 import com.deaddict.app.ui.GoalProgressInsightsScreen
 import com.deaddict.app.ui.InsightsControlsViewModel
+import com.deaddict.app.ui.PublicResourcesAction
 import com.deaddict.app.ui.RecoveryTrackAppRoot
 import com.deaddict.app.ui.recoveryPane
 import com.deaddict.app.ui.theme.DeAddictTheme
@@ -66,6 +68,10 @@ class MainActivity : FragmentActivity() {
                 !state.isLoading &&
                 !state.requiresOnboarding &&
                 state.selectedTab == AppTab.INSIGHTS
+            val showYouActions = isAppUnlocked &&
+                !state.isLoading &&
+                !state.requiresOnboarding &&
+                state.selectedTab == AppTab.YOU
             SideEffect {
                 if (state.privacyPreferences.screenProtectionEnabled) {
                     window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -181,12 +187,17 @@ class MainActivity : FragmentActivity() {
                             onOnboardingComplete = viewModel::completeOnboarding,
                         )
                     }
+                    PublicResourcesAction(
+                        visible = showYouActions,
+                        onPrivacyPolicy = { openExternalPage(BuildConfig.PRIVACY_POLICY_URL) },
+                        onTermsOfService = { openExternalPage(BuildConfig.TERMS_OF_SERVICE_URL) },
+                        onSupport = { openExternalPage(BuildConfig.SUPPORT_URL) },
+                        onAccountDeletionHelp = {
+                            openExternalPage(BuildConfig.ACCOUNT_DELETION_URL)
+                        },
+                    )
                     AccountDeletionAction(
-                        visible = isAppUnlocked &&
-                            !state.isLoading &&
-                            !state.requiresOnboarding &&
-                            state.selectedTab == AppTab.YOU &&
-                            state.accountDeletionAvailable,
+                        visible = showYouActions && state.accountDeletionAvailable,
                         inProgress = state.accountDeletionInProgress,
                         onConfirm = {
                             insightsControlsViewModel.clearPreferences()
@@ -208,6 +219,16 @@ class MainActivity : FragmentActivity() {
     override fun onStop() {
         super.onStop()
         if (!isChangingConfigurations) biometricAuthenticated = false
+    }
+
+    private fun openExternalPage(url: String) {
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return
+        if (uri.scheme != "https" || uri.host.isNullOrBlank()) return
+        runCatching {
+            startActivity(
+                Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE),
+            )
+        }
     }
 
     private fun authenticate(onSuccess: () -> Unit) {
