@@ -1,0 +1,145 @@
+name: Validate and deploy public support site
+
+on:
+  pull_request:
+    paths:
+      - "docs/site/**"
+      - ".github/workflows/deploy-public-site.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/site/**"
+      - ".github/workflows/deploy-public-site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: public-support-site
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DEADDICT_DEVELOPER_NAME: ${{ vars.DEADDICT_DEVELOPER_NAME }}
+      DEADDICT_SUPPORT_EMAIL: ${{ vars.DEADDICT_SUPPORT_EMAIL }}
+      EVENT_NAME: ${{ github.event_name }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Render and validate static site
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import html
+          import os
+          import re
+          import shutil
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          source = Path("docs/site")
+          output = Path("_site")
+          required = {
+              "index.html",
+              "privacy.html",
+              "terms.html",
+              "support.html",
+              "account-deletion.html",
+              "styles.css",
+          }
+          missing = sorted(name for name in required if not (source / name).is_file())
+          if missing:
+              raise SystemExit(f"Missing public-site files: {', '.join(missing)}")
+
+          event_name = os.environ.get("EVENT_NAME", "")
+          developer_name = os.environ.get("DEADDICT_DEVELOPER_NAME", "").strip()
+          support_email = os.environ.get("DEADDICT_SUPPORT_EMAIL", "").strip()
+          if event_name == "workflow_dispatch":
+              if len(developer_name) < 2:
+                  raise SystemExit("Repository variable DEADDICT_DEVELOPER_NAME is required for deployment")
+              if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", support_email):
+                  raise SystemExit("Repository variable DEADDICT_SUPPORT_EMAIL must be a valid public email")
+          else:
+              developer_name = developer_name or "DeAddict preview"
+              support_email = support_email or "preview@deaddict.invalid"
+
+          if output.exists():
+              shutil.rmtree(output)
+          shutil.copytree(source, output)
+
+          replacements = {
+              "__DEVELOPER_NAME__": html.escape(developer_name, quote=True),
+              "__SUPPORT_EMAIL__": html.escape(support_email, quote=True),
+          }
+          for page in output.glob("*.html"):
+              content = page.read_text(encoding="utf-8")
+              for marker, value in replacements.items():
+                  content = content.replace(marker, value)
+              if "__DEVELOPER_NAME__" in content or "__SUPPORT_EMAIL__" in content:
+                  raise SystemExit(f"Unresolved identity marker in {page}")
+              page.write_text(content, encoding="utf-8")
+
+          class LinkParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.links = []
+              def handle_starttag(self, tag, attrs):
+                  if tag == "a":
+                      href = dict(attrs).get("href")
+                      if href:
+                          self.links.append(href)
+
+          for page in output.glob("*.html"):
+              parser = LinkParser()
+              parser.feed(page.read_text(encoding="utf-8"))
+              for href in parser.links:
+                  if href.startswith(("https://", "mailto:", "#")):
+                      continue
+                  if href.startswith(("http://", "javascript:", "data:")):
+                      raise SystemExit(f"Unsafe link in {page}: {href}")
+                  path = urlsplit(href).path
+                  if not path:
+                      continue
+                  target = (page.parent / path).resolve()
+                  if output.resolve() not in target.parents and target != output.resolve():
+                      raise SystemExit(f"Link escapes site root in {page}: {href}")
+                  if not target.is_file():
+                      raise SystemExit(f"Broken internal link in {page}: {href}")
+
+          (output / ".nojekyll").write_text("", encoding="utf-8")
+          print(f"Validated {len(list(output.glob('*.html')))} HTML pages for {developer_name}")
+          PY
+
+      - name: Configure GitHub Pages
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy public support site
+        id: deployment
+        uses: actions/deploy-pages@v4
