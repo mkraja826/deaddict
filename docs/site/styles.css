@@ -1,0 +1,49 @@
+:root {
+  color-scheme: light dark;
+  --page: #f6f7f8;
+  --surface: #ffffff;
+  --text: #17191c;
+  --muted: #5c626a;
+  --accent: #5b34da;
+  --border: #d9dce1;
+  --danger: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #101114;
+    --surface: #191b20;
+    --text: #f2f2f4;
+    --muted: #b8bbc2;
+    --accent: #c7b5ff;
+    --border: #383b43;
+    --danger: #ffb4ab;
+  }
+}
+
+* { box-sizing: border-box; }
+html { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.6; }
+body { margin: 0; background: var(--page); color: var(--text); }
+a { color: var(--accent); text-underline-offset: 0.18em; }
+a:focus-visible, .button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+header, main, footer { width: min(920px, calc(100% - 32px)); margin-inline: auto; }
+header { padding: 24px 0 12px; }
+nav { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+nav a:first-child { font-size: 1.25rem; font-weight: 750; text-decoration: none; margin-right: auto; }
+main { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: clamp(22px, 5vw, 48px); margin-block: 18px 36px; }
+h1 { line-height: 1.15; font-size: clamp(2rem, 6vw, 3.6rem); margin-top: 0; }
+h2 { margin-top: 2rem; line-height: 1.25; }
+p, li { max-width: 74ch; }
+.lead { font-size: 1.15rem; color: var(--muted); }
+.notice { border-left: 4px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); padding: 14px 16px; border-radius: 8px; }
+.warning { border-left-color: var(--danger); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-block: 24px; }
+.card { display: block; border: 1px solid var(--border); border-radius: 14px; padding: 18px; text-decoration: none; color: var(--text); }
+.card:hover { border-color: var(--accent); }
+.card strong { display: block; margin-bottom: 5px; }
+.button { display: inline-block; background: var(--accent); color: #fff; font-weight: 700; padding: 12px 18px; border-radius: 999px; text-decoration: none; }
+@media (prefers-color-scheme: dark) { .button { color: #17121f; } }
+.meta { color: var(--muted); font-size: 0.92rem; }
+footer { color: var(--muted); padding-bottom: 40px; }
+footer p { max-width: none; }
+code { overflow-wrap: anywhere; }
