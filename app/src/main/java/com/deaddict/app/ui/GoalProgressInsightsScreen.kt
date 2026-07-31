@@ -1,5 +1,6 @@
 package com.deaddict.app.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -10,15 +11,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +34,7 @@ import com.deaddict.app.insights.CrossTrackPattern
 import com.deaddict.app.insights.GoalProgressMode
 import com.deaddict.app.insights.GoalProgressSegment
 import com.deaddict.app.insights.GoalProgressTrend
+import com.deaddict.app.insights.InsightWindow
 import com.deaddict.app.insights.ReplacementActionInsight
 import com.deaddict.model.RecoveryGoalType
 import kotlin.math.abs
@@ -35,14 +42,21 @@ import kotlin.math.abs
 @Composable
 internal fun GoalProgressInsightsScreen(
     appState: AppUiState,
+    insightsState: InsightsControlsUiState,
     onTabSelected: (AppTab) -> Unit,
+    onWindowSelected: (InsightWindow) -> Unit,
+    onHideComparison: (String) -> Unit,
+    onRestoreComparisons: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val selectedTrack = appState.selectedRecoveryTrack
-    val insights = appState.insights
+    val insights = insightsState.insights
     val previousGoals = insights?.goalProgress?.previousGoals.orEmpty()
     val crossTrack = insights?.crossTrackInsights
     val crossTrackPairings = crossTrack?.pairings.orEmpty()
+    val visiblePairings = crossTrackPairings.filterNot {
+        it.otherTrackId in insightsState.hiddenOtherTrackIds
+    }
     val replacementActions = crossTrack?.replacementActions.orEmpty()
     Scaffold(
         modifier = modifier,
@@ -82,10 +96,47 @@ internal fun GoalProgressInsightsScreen(
                     )
                 }
 
-                if (insights == null) {
+                item {
+                    ProgressSectionCard("Time window") {
+                        Text(
+                            "The selected window applies to goal progress, behavior, Rescue actions, and cross-track patterns.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            InsightWindow.entries.forEach { window ->
+                                FilterChip(
+                                    selected = insightsState.window == window,
+                                    onClick = { onWindowSelected(window) },
+                                    label = { Text(window.label()) },
+                                    modifier = Modifier.testTag("insight_window_${window.days}"),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (insightsState.isLoading && insights == null) {
+                    item {
+                        ProgressSectionCard("Refreshing Insights") {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator()
+                                Text("Reviewing the selected time window…")
+                            }
+                        }
+                    }
+                } else if (insights == null) {
                     item {
                         ProgressSectionCard("Not enough data") {
-                            Text("Complete daily check-ins for this track to begin seeing goal-aware progress.")
+                            Text(
+                                insightsState.errorMessage
+                                    ?: "Complete daily check-ins for this track to begin seeing goal-aware progress.",
+                            )
                         }
                     }
                 } else {
@@ -130,14 +181,30 @@ internal fun GoalProgressInsightsScreen(
                                 summary.averageSleepOnSharedDifficultDays?.let { average ->
                                     ProgressMetric("Sleep on shared difficult days", "%.1f / 5".format(average))
                                 }
-                                crossTrackPairings.forEach { pair ->
+                                visiblePairings.forEach { pair ->
                                     CrossTrackPairRow(
                                         pair = pair,
                                         otherTrackTitle = appState.recoveryTracks
                                             .firstOrNull { it.id == pair.otherTrackId }
                                             ?.title
                                             ?: "Another Recovery Track",
+                                        onHide = { onHideComparison(pair.otherTrackId) },
                                     )
+                                }
+                                if (visiblePairings.isEmpty()) {
+                                    Text("All cross-track comparisons for this Recovery Track are hidden.")
+                                }
+                                if (insightsState.hiddenOtherTrackIds.isNotEmpty()) {
+                                    Text(
+                                        "${insightsState.hiddenOtherTrackIds.size} comparison(s) hidden only on this device.",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    TextButton(
+                                        onClick = onRestoreComparisons,
+                                        modifier = Modifier.testTag("restore_cross_track_comparisons"),
+                                    ) {
+                                        Text("Restore hidden comparisons")
+                                    }
                                 }
                                 Text(summary.explanation, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -270,12 +337,25 @@ private fun HistoricalGoalRow(progress: GoalProgressSegment) {
 private fun CrossTrackPairRow(
     pair: CrossTrackPairInsight,
     otherTrackTitle: String,
+    onHide: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(otherTrackTitle, fontWeight = FontWeight.SemiBold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(otherTrackTitle, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+            TextButton(
+                onClick = onHide,
+                modifier = Modifier.testTag("hide_cross_track_${pair.otherTrackId}"),
+            ) {
+                Text("Hide")
+            }
+        }
         Text(pair.pattern.label(), color = MaterialTheme.colorScheme.primary)
         Text(
             "${pair.comparableDays} comparable of ${pair.pairedDays} paired day(s) · " +
@@ -337,6 +417,12 @@ private fun ProgressMetric(label: String, value: String) {
         Text(label, modifier = Modifier.weight(1f))
         Text(value, fontWeight = FontWeight.SemiBold)
     }
+}
+
+private fun InsightWindow.label(): String = when (this) {
+    InsightWindow.SEVEN_DAYS -> "7 days"
+    InsightWindow.THIRTY_DAYS -> "30 days"
+    InsightWindow.NINETY_DAYS -> "90 days"
 }
 
 private fun RecoveryGoalType?.goalLabel(): String = when (this) {
