@@ -1,0 +1,103 @@
+name: Capture Play Store screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: Device theme used for the screenshot set
+        required: true
+        default: light
+        type: choice
+        options:
+          - light
+          - dark
+
+permissions:
+  contents: read
+
+concurrency:
+  group: store-screenshot-capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Build screenshot APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Capture fictional-data screens
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -euo pipefail
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell settings put system font_scale 1.0
+            if [ "${{ inputs.theme }}" = "dark" ]; then
+              adb shell cmd uimode night yes
+            else
+              adb shell cmd uimode night no
+            fi
+            adb shell wm dismiss-keyguard || true
+            mkdir -p build/store-screenshots/${{ inputs.theme }}
+
+            for screen in today tracks rescue insights you
+            do
+              adb shell am force-stop com.deaddict.app
+              adb shell am start -W \
+                -n com.deaddict.app/com.deaddict.app.store.StorePreviewActivity \
+                --es screen "$screen"
+              sleep 2
+              adb exec-out screencap -p > "build/store-screenshots/${{ inputs.theme }}/$screen.png"
+            done
+
+            python3 - <<'PY'
+            import struct
+            from pathlib import Path
+
+            root = Path("build/store-screenshots/${{ inputs.theme }}")
+            required = ["today", "tracks", "rescue", "insights", "you"]
+            for name in required:
+                path = root / f"{name}.png"
+                data = path.read_bytes()
+                if data[:8] != b"\x89PNG\r\n\x1a\n":
+                    raise SystemExit(f"{path} is not a PNG")
+                width, height = struct.unpack(">II", data[16:24])
+                if width != 1080 or height != 1920:
+                    raise SystemExit(f"{path} is {width}x{height}; expected 1080x1920")
+                if len(data) < 50_000:
+                    raise SystemExit(f"{path} is unexpectedly small")
+                print(f"Validated {path}: {width}x{height}, {len(data)} bytes")
+            PY
+
+      - name: Upload screenshot set
+        uses: actions/upload-artifact@v4
+        with:
+          name: deaddict-play-screenshots-${{ inputs.theme }}
+          if-no-files-found: error
+          retention-days: 30
+          path: build/store-screenshots/${{ inputs.theme }}/*.png
