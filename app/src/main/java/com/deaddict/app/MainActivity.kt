@@ -28,6 +28,7 @@ import com.deaddict.app.ui.AppTab
 import com.deaddict.app.ui.AppViewModel
 import com.deaddict.app.ui.DailyCheckInTodayScreen
 import com.deaddict.app.ui.DailyCheckInViewModel
+import com.deaddict.app.ui.GoalProgressInsightsScreen
 import com.deaddict.app.ui.RecoveryTrackAppRoot
 import com.deaddict.app.ui.theme.DeAddictTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -56,6 +57,10 @@ class MainActivity : FragmentActivity() {
                 !state.isLoading &&
                 !state.requiresOnboarding &&
                 state.selectedTab == AppTab.TODAY
+            val showGoalProgressInsights = isAppUnlocked &&
+                !state.isLoading &&
+                !state.requiresOnboarding &&
+                state.selectedTab == AppTab.INSIGHTS
             SideEffect {
                 if (state.privacyPreferences.screenProtectionEnabled) {
                     window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -70,16 +75,22 @@ class MainActivity : FragmentActivity() {
             }
             DeAddictTheme {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    if (showDailyCheckIn) {
-                        DailyCheckInTodayScreen(
+                    when {
+                        showDailyCheckIn -> DailyCheckInTodayScreen(
                             appState = state,
                             checkInState = dailyCheckInState,
                             onTabSelected = viewModel::selectTab,
                             onSave = dailyCheckInViewModel::save,
                             modifier = Modifier.fillMaxSize(),
                         )
-                    } else {
-                        RecoveryTrackAppRoot(
+
+                        showGoalProgressInsights -> GoalProgressInsightsScreen(
+                            appState = state,
+                            onTabSelected = viewModel::selectTab,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+
+                        else -> RecoveryTrackAppRoot(
                             state = state,
                             isAppUnlocked = isAppUnlocked,
                             onTabSelected = viewModel::selectTab,

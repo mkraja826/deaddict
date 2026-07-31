@@ -5,6 +5,8 @@ import com.deaddict.database.repository.RecoveryOwnerContext
 import com.deaddict.model.RecoveryTrackId
 import com.deaddict.programs.ProgramId
 import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
 
 class LocalInsightsRepository(
     private val database: DeAddictDatabase,
@@ -29,12 +31,42 @@ class LocalInsightsRepository(
         recoveryTrackId: RecoveryTrackId,
         window: InsightWindow,
         nowMillis: Long = System.currentTimeMillis(),
+        zoneId: ZoneId = ZoneId.systemDefault(),
     ): SevenDayInsights {
+        val track = checkNotNull(database.recoveryTrackDao().byId(recoveryTrackId.value)) {
+            "Recovery Track no longer exists"
+        }
         val since = nowMillis - Duration.ofDays(window.days).toMillis()
-        return InsightAnalyzer.analyze(
+        val endEpochDay = Instant.ofEpochMilli(nowMillis)
+            .atZone(zoneId)
+            .toLocalDate()
+            .toEpochDay()
+        val startEpochDay = endEpochDay - window.days + 1
+        val goalProgress = GoalProgressAnalyzer.analyze(
+            rows = database.dailyCheckInDao().progressRows(
+                ownerKey = track.ownerKey,
+                recoveryTrackId = recoveryTrackId.value,
+                startEpochDay = startEpochDay,
+                endEpochDay = endEpochDay,
+            ),
+            currentGoal = database.recoveryGoalDao().current(recoveryTrackId.value),
+            window = window,
+            nowMillis = nowMillis,
+            zoneId = zoneId,
+        )
+        val behavioral = InsightAnalyzer.analyze(
             tracking = database.trackingDao().sinceTrack(recoveryTrackId.value, since),
             rescues = database.rescueDao().sinceTrack(recoveryTrackId.value, since),
+            zoneId = zoneId,
             window = window,
+        )
+        val goalExplanation = goalProgress?.currentGoal?.let(::progressExplanation)
+        return behavioral.copy(
+            goalProgress = goalProgress,
+            explanation = listOfNotNull(
+                behavioral.explanation.takeIf(String::isNotBlank),
+                goalExplanation,
+            ).joinToString(" "),
         )
     }
 
@@ -60,5 +92,19 @@ class LocalInsightsRepository(
             "Selected Recovery Track does not match the requested program"
         }
         return sevenDays(selection.recoveryTrackId, nowMillis)
+    }
+
+    private fun progressExplanation(progress: GoalProgressSegment): String = when (progress.mode) {
+        GoalProgressMode.AWARENESS -> {
+            val consistency = progress.consistencyPercent?.let { "$it%" } ?: "not enough data"
+            "Current goal logging consistency is $consistency across ${progress.confirmedDays} confirmed day(s)."
+        }
+        GoalProgressMode.ADHERENCE -> {
+            val adherence = progress.adherencePercent?.let { "$it%" } ?: "not enough data"
+            "Current goal adherence is $adherence: ${progress.goalMetDays} met, " +
+                "${progress.partlyMetDays} partly met, ${progress.goalNotMetDays} not met, " +
+                "and ${progress.slipDays} slip day(s)."
+        }
+        GoalProgressMode.UNSCOPED -> progress.explanation
     }
 }
