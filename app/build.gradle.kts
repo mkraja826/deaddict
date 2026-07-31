@@ -24,6 +24,8 @@ val hasReleaseSigning = listOf(
     releaseKeyAlias,
     releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
+val appVersionCode = 1
+val appVersionName = "0.1.0"
 
 android {
     namespace = "com.deaddict.app"
@@ -33,8 +35,8 @@ android {
         applicationId = "com.deaddict.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val supabaseUrl = providers.gradleProperty("DEADDICT_SUPABASE_URL")
             .orElse(deaddictLocalProperties.getProperty("DEADDICT_SUPABASE_URL", ""))
@@ -83,6 +85,51 @@ android {
                 "proguard-rules.pro",
             )
         }
+    }
+}
+
+tasks.register("verifyReleaseReadiness") {
+    group = "verification"
+    description = "Checks structural release and staged-rollout safeguards."
+
+    doLast {
+        check(appVersionCode > 0) { "versionCode must be positive." }
+        check(Regex("""\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?""").matches(appVersionName)) {
+            "versionName must use semantic versioning."
+        }
+        check(android.buildTypes.getByName("release").isMinifyEnabled) {
+            "Release minification must remain enabled."
+        }
+
+        val manifest = file("src/main/AndroidManifest.xml").readText()
+        listOf(
+            "android:allowBackup=\"false\"",
+            "android:usesCleartextTraffic=\"false\"",
+            "android:supportsRtl=\"true\"",
+        ).forEach { requiredSetting ->
+            check(manifest.contains(requiredSetting)) {
+                "AndroidManifest.xml is missing release safeguard: $requiredSetting"
+            }
+        }
+
+        val rolloutRaw = providers.gradleProperty("DEADDICT_ROLLOUT_PERCENT").orNull
+            ?: System.getenv("DEADDICT_ROLLOUT_PERCENT")
+            ?: "5"
+        val rolloutPercent = rolloutRaw.toIntOrNull()
+            ?: error("DEADDICT_ROLLOUT_PERCENT must be a whole number.")
+        check(rolloutPercent in 1..100) {
+            "DEADDICT_ROLLOUT_PERCENT must be between 1 and 100."
+        }
+
+        val wideRolloutAllowed = providers.gradleProperty("DEADDICT_ALLOW_WIDE_ROLLOUT").orNull
+            ?.toBooleanStrictOrNull()
+            ?: System.getenv("DEADDICT_ALLOW_WIDE_ROLLOUT")?.toBooleanStrictOrNull()
+            ?: false
+        check(rolloutPercent <= 25 || wideRolloutAllowed) {
+            "Rollouts above 25% require DEADDICT_ALLOW_WIDE_ROLLOUT=true after health review."
+        }
+
+        println("Release readiness verified for a staged rollout of $rolloutPercent%.")
     }
 }
 

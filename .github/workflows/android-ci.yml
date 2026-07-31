@@ -47,6 +47,17 @@ jobs:
           set -o pipefail
           ./gradlew lint --stacktrace 2>&1 | tee build-logs/android-lint.log
 
+      - name: Verify release readiness
+        shell: bash
+        env:
+          DEADDICT_ROLLOUT_PERCENT: ${{ vars.DEADDICT_ROLLOUT_PERCENT }}
+          DEADDICT_ALLOW_WIDE_ROLLOUT: ${{ vars.DEADDICT_ALLOW_WIDE_ROLLOUT }}
+        run: |
+          set -o pipefail
+          ./gradlew :app:verifyReleaseReadiness \
+            -PDEADDICT_ROLLOUT_PERCENT="${DEADDICT_ROLLOUT_PERCENT:-5}" \
+            --stacktrace 2>&1 | tee build-logs/release-readiness.log
+
       - name: Build debug, release, and database test artifacts
         shell: bash
         run: |

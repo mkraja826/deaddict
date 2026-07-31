@@ -50,6 +50,16 @@ jobs:
       - name: Run Android lint
         run: ./gradlew lint --no-build-cache --stacktrace
 
+      - name: Verify release readiness
+        env:
+          DEADDICT_ROLLOUT_PERCENT: ${{ vars.DEADDICT_ROLLOUT_PERCENT }}
+          DEADDICT_ALLOW_WIDE_ROLLOUT: ${{ vars.DEADDICT_ALLOW_WIDE_ROLLOUT }}
+        run: |
+          ./gradlew :app:verifyReleaseReadiness \
+            -PDEADDICT_ROLLOUT_PERCENT="${DEADDICT_ROLLOUT_PERCENT:-5}" \
+            --no-build-cache \
+            --stacktrace
+
       - name: Validate release signing secrets
         if: github.event_name != 'pull_request'
         env:

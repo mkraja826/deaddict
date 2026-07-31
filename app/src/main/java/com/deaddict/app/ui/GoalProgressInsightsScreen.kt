@@ -27,6 +27,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.deaddict.app.insights.CrossTrackPairInsight
@@ -85,7 +91,11 @@ internal fun GoalProgressInsightsScreen(
             ) {
                 item {
                     Spacer(Modifier.height(12.dp))
-                    Text("Insights", style = MaterialTheme.typography.headlineLarge)
+                    Text(
+                        "Insights",
+                        style = MaterialTheme.typography.headlineLarge,
+                        modifier = Modifier.semantics { heading() },
+                    )
                     Text(
                         "Only ${selectedTrack?.title ?: "the selected Recovery Track"} is scored here.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -107,11 +117,17 @@ internal fun GoalProgressInsightsScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             InsightWindow.entries.forEach { window ->
+                                val selected = insightsState.window == window
                                 FilterChip(
-                                    selected = insightsState.window == window,
+                                    selected = selected,
                                     onClick = { onWindowSelected(window) },
                                     label = { Text(window.label()) },
-                                    modifier = Modifier.testTag("insight_window_${window.days}"),
+                                    modifier = Modifier
+                                        .testTag("insight_window_${window.days}")
+                                        .semantics {
+                                            contentDescription = "${window.label()} Insights window"
+                                            stateDescription = if (selected) "Selected" else "Not selected"
+                                        },
                                 )
                             }
                         }
@@ -122,6 +138,11 @@ internal fun GoalProgressInsightsScreen(
                     item {
                         ProgressSectionCard("Refreshing Insights") {
                             Row(
+                                modifier = Modifier.semantics {
+                                    liveRegion = LiveRegionMode.Polite
+                                    contentDescription =
+                                        "Refreshing Insights for ${insightsState.window.days} days"
+                                },
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -136,6 +157,13 @@ internal fun GoalProgressInsightsScreen(
                             Text(
                                 insightsState.errorMessage
                                     ?: "Complete daily check-ins for this track to begin seeing goal-aware progress.",
+                                modifier = Modifier.semantics {
+                                    liveRegion = if (insightsState.errorMessage == null) {
+                                        LiveRegionMode.Polite
+                                    } else {
+                                        LiveRegionMode.Assertive
+                                    }
+                                },
                             )
                         }
                     }
@@ -192,16 +220,24 @@ internal fun GoalProgressInsightsScreen(
                                     )
                                 }
                                 if (visiblePairings.isEmpty()) {
-                                    Text("All cross-track comparisons for this Recovery Track are hidden.")
+                                    Text(
+                                        "All cross-track comparisons for this Recovery Track are hidden.",
+                                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                                    )
                                 }
                                 if (insightsState.hiddenOtherTrackIds.isNotEmpty()) {
                                     Text(
                                         "${insightsState.hiddenOtherTrackIds.size} comparison(s) hidden only on this device.",
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                                     )
                                     TextButton(
                                         onClick = onRestoreComparisons,
-                                        modifier = Modifier.testTag("restore_cross_track_comparisons"),
+                                        modifier = Modifier
+                                            .testTag("restore_cross_track_comparisons")
+                                            .semantics {
+                                                contentDescription = "Restore all hidden cross-track comparisons"
+                                            },
                                     ) {
                                         Text("Restore hidden comparisons")
                                     }
@@ -253,6 +289,7 @@ private fun CurrentGoalProgressCard(progress: GoalProgressSegment) {
             progress.title ?: progress.goalType.goalLabel(),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics { heading() },
         )
         progress.targetValue?.let { target ->
             ProgressMetric(
@@ -318,6 +355,7 @@ private fun HistoricalGoalRow(progress: GoalProgressSegment) {
         Text(
             progress.title ?: progress.goalType.goalLabel(),
             fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics { heading() },
         )
         Text(
             when (progress.mode) {
@@ -348,10 +386,18 @@ private fun CrossTrackPairRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(otherTrackTitle, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+            Text(
+                otherTrackTitle,
+                modifier = Modifier.weight(1f).semantics { heading() },
+                fontWeight = FontWeight.SemiBold,
+            )
             TextButton(
                 onClick = onHide,
-                modifier = Modifier.testTag("hide_cross_track_${pair.otherTrackId}"),
+                modifier = Modifier
+                    .testTag("hide_cross_track_${pair.otherTrackId}")
+                    .semantics {
+                        contentDescription = "Hide comparison with $otherTrackTitle"
+                    },
             ) {
                 Text("Hide")
             }
@@ -372,7 +418,11 @@ private fun ReplacementActionRow(action: ReplacementActionInsight) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(action.actionKey.humanizeKey(), fontWeight = FontWeight.SemiBold)
+        Text(
+            action.actionKey.humanizeKey(),
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics { heading() },
+        )
         Text(
             "Urge decreased after ${action.reducedUrgeCount} of ${action.attempts} recorded attempt(s) " +
                 "(${action.reducedUrgePercent}%).",
@@ -402,7 +452,11 @@ private fun ProgressSectionCard(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() },
+            )
             content()
         }
     }
@@ -411,7 +465,11 @@ private fun ProgressSectionCard(
 @Composable
 private fun ProgressMetric(label: String, value: String) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$label, $value"
+            },
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(label, modifier = Modifier.weight(1f))
