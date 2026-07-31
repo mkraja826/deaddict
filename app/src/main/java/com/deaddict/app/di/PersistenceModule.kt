@@ -19,8 +19,10 @@ import com.deaddict.database.DeAddictDatabase
 import com.deaddict.database.MIGRATION_1_2
 import com.deaddict.database.MIGRATION_2_3
 import com.deaddict.database.MIGRATION_3_4
+import com.deaddict.database.MIGRATION_4_5
 import com.deaddict.database.RECOVERY_EVENT_DATABASE_CALLBACK
 import com.deaddict.database.RECOVERY_TRACK_DATABASE_CALLBACK
+import com.deaddict.database.repository.LocalDailyCheckInRepository
 import com.deaddict.database.repository.LocalProgramRepository
 import com.deaddict.database.repository.LocalRecoveryTrackRepository
 import com.deaddict.database.repository.LocalRescueRepository
@@ -48,7 +50,7 @@ object PersistenceModule {
             DeAddictDatabase::class.java,
             "deaddict.db",
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .addCallback(RECOVERY_TRACK_DATABASE_CALLBACK)
             .addCallback(RECOVERY_EVENT_DATABASE_CALLBACK)
             .build()
@@ -104,6 +106,11 @@ object PersistenceModule {
     @Singleton
     fun recoveryTrackRepository(database: DeAddictDatabase): LocalRecoveryTrackRepository =
         LocalRecoveryTrackRepository(database)
+
+    @Provides
+    @Singleton
+    fun dailyCheckInRepository(database: DeAddictDatabase): LocalDailyCheckInRepository =
+        LocalDailyCheckInRepository(database)
 
     @Provides
     @Singleton
